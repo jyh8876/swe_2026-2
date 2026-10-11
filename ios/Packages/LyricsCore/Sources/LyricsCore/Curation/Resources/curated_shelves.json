@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-10-09",
+  "shelves": [
+    {
+      "id": "easy-first",
+      "title": "처음 공부하기 좋은 노래",
+      "subtitle": "Easy first songs",
+      "songs": [
+        { "title": "Viva La Vida", "artist": "Coldplay", "duration": 242 },
+        { "title": "Perfect", "artist": "Ed Sheeran", "duration": 263 },
+        { "title": "Count on Me", "artist": "Bruno Mars", "duration": 197 },
+        { "title": "Let It Be", "artist": "The Beatles", "duration": 243 },
+        { "title": "Yellow", "artist": "Coldplay", "duration": 269 }
+      ]
+    },
+    {
+      "id": "slang-heavy",
+      "title": "슬랭 가득한 노래",
+      "subtitle": "Slang-heavy songs",
+      "songs": [
+        { "title": "Uptown Funk", "artist": "Mark Ronson", "duration": 270 },
+        { "title": "Espresso", "artist": "Sabrina Carpenter", "duration": 175 },
+        { "title": "Levitating", "artist": "Dua Lipa", "duration": 203 },
+        { "title": "Watermelon Sugar", "artist": "Harry Styles", "duration": 174 },
+        { "title": "Bad Guy", "artist": "Billie Eilish", "duration": 194 }
+      ]
+    },
+    {
+      "id": "trending-pop",
+      "title": "이달의 트렌딩 팝",
+      "subtitle": "This month's trending pop",
+      "songs": [
+        { "title": "APT.", "artist": "ROSÉ", "duration": 170 },
+        { "title": "Die With A Smile", "artist": "Lady Gaga", "duration": 252 },
+        { "title": "Birds of a Feather", "artist": "Billie Eilish", "duration": 210 },
+        { "title": "Golden", "artist": "HUNTR/X", "duration": 194 },
+        { "title": "Supernova", "artist": "aespa", "duration": 179 }
+      ]
+    }
+  ]
+}

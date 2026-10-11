@@ -1,0 +1,65 @@
+# XcodeGen spec — generate the Xcode project with:  xcodegen generate
+# (brew install xcodegen). The generated LyricsTranslator.xcodeproj is committed too,
+# so opening it directly also works.
+name: LyricsTranslator
+options:
+  bundleIdPrefix: com.team9
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  developmentLanguage: ko
+configFiles:
+  Debug: Config/App.xcconfig
+  Release: Config/App.xcconfig
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: targeted
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+packages:
+  LyricsCore:
+    path: Packages/LyricsCore
+targets:
+  LyricsTranslator:
+    type: application
+    platform: iOS
+    sources:
+      - path: LyricsTranslator
+    dependencies:
+      - package: LyricsCore
+    info:
+      path: LyricsTranslator/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: DAY-OFF
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen:
+          UIColorName: AccentColor
+        UIApplicationSupportsIndirectInputEvents: true
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIUserInterfaceStyle: Dark
+        ITSAppUsesNonExemptEncryption: false
+        NSAppleMusicUsageDescription: 지금 Apple Music에서 재생 중인 노래를 알아보고 가사를 맞춰 보여주기 위해 필요해요.
+        LSApplicationQueriesSchemes: [spotify]
+        SpotifyClientID: $(SPOTIFY_CLIENT_ID)
+        CFBundleURLTypes:
+          - CFBundleURLName: com.team9.lyricstranslator
+            CFBundleURLSchemes: [lyricstranslator]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.team9.lyricstranslator
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ENABLE_PREVIEWS: YES
+        GENERATE_INFOPLIST_FILE: NO
+schemes:
+  LyricsTranslator:
+    build:
+      targets:
+        LyricsTranslator: all
+    test:
+      targets:
+        - package: LyricsCore/LyricsCoreTests

@@ -1,0 +1,5 @@
+// Shared build settings. Local secrets (Team ID, Spotify client ID) go in Secrets.xcconfig,
+// which is git-ignored. Copy Secrets.example.xcconfig → Secrets.xcconfig and fill it in.
+SPOTIFY_CLIENT_ID =
+DEVELOPMENT_TEAM =
+#include? "Secrets.xcconfig"

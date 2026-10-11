@@ -1,0 +1,121 @@
+# ───────────────────────────── macOS / editors ─────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+*.swp
+*~
+.idea/
+.vscode/
+*.code-workspace
+
+# ───────────────────────────── Xcode ─────────────────────────────
+# User-specific project state (the .xcodeproj itself is committed)
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+**/*.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+**/*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/configuration/
+DerivedData/
+build/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM
+*.dSYM.zip
+*.xcarchive
+*.xcresult
+timeline.xctimeline
+playground.xcworkspace
+
+# ───────────────────────────── Swift Package Manager ─────────────────────────────
+.build/
+.swiftpm/
+Packages/*/.build/
+**/.swiftpm/xcode/
+# Package.resolved IS committed for the app (pins dependency versions, SSRD 2.5)
+
+# ───────────────────────────── Dependency managers (not used, kept for safety) ─────────────────────────────
+Pods/
+Carthage/Build/
+Carthage/Checkouts/
+
+# ───────────────────────────── fastlane ─────────────────────────────
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# ───────────────────────────── Secrets — never commit (LOS-10) ─────────────────────────────
+ios/Config/Secrets.xcconfig
+*.xcconfig.local
+.env
+.env.*
+!.env.example
+*.p12
+*.p8
+*.mobileprovision
+*.provisionprofile
+*.cer
+*.certSigningRequest
+GoogleService-Info.plist
+# API keys, tokens, credentials
+*.key
+*.pem
+*.jks
+*.keystore
+*secret*
+*Secret*
+*credentials*
+*Credentials*
+*apikey*
+*api_key*
+*.token
+.netrc
+service-account*.json
+!ios/Config/Secrets.example.xcconfig
+
+# ───────────────────────────── Private / planning documents ─────────────────────────────
+# Spec & plan docs stay local (shared via Notion/Drive, not the repo)
+*.docx
+*.doc
+*.pptx
+*.ppt
+*.xlsx
+*.xls
+*.hwp
+*.hwpx
+*.pdf
+PLAN.md
+PLAN.*
+*_SSRD_*
+# Private workspace links (Figma, Notion)
+links.txt
+# Personal notes / scratch
+notes/
+private/
+*.private.*
+
+# ───────────────────────────── Vendored binaries / large files ─────────────────────────────
+# On-device LLM weights are downloaded at runtime, never bundled or committed (PR-9)
+*.gguf
+*.bin
+*.safetensors
+*.mlmodelc/
+# Spotify iOS SDK binary is downloaded per README
+ios/Vendor/SpotifyiOS.xcframework/
+
+# ───────────────────────────── Docs tooling ─────────────────────────────
+# Word/Office lock and temp files
+~$*
+*.tmp
+# Generated document renders
+*.docx.bak
+
+# ───────────────────────────── Python helper scripts ─────────────────────────────
+__pycache__/
+*.pyc
+.venv/
