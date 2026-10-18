@@ -34,6 +34,11 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            // shared_preferences_android and path_provider_android call their Kotlin side through
+            // package:jni, which R8 cannot see: a minified build strips those methods and the app
+            // hangs on its first SharedPreferences read. The Dart code is AOT-compiled anyway.
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }
