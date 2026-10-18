@@ -1,0 +1,38 @@
+@startuml
+!pragma layout smetana
+!include _style.iuml
+left to right direction
+node "Developer infrastructure" as DEV {
+  component "GitHub\n(repo, issues, projects)" as GH
+  component "Xcode Cloud (CI)\ncore tests on every PR" as XC
+  component "TestFlight\n(iPhone + Mac builds)" as TF
+}
+node "iPhone — iOS 17+\n(reference: 8 GB, iPhone 15 Pro+;\nminimum for llama.cpp: 6 GB)" as PH {
+  node "LyricsTranslator.app (sandbox)" as APP {
+    component "SwiftUI app\n+ LyricsCore" as A1
+    database "Application Support/\nLyricsTranslator/\ncollection.json (→ SQLite WAL)\nCovers/*.jpg\nModels/*.gguf (no backup)" as FS
+  }
+  component "OS services\nKeychain (ThisDeviceOnly)\nFoundation Models (iOS 26+)\nMetal GPU (foreground only)\nNaturalLanguage\nNetwork (NWPathMonitor)" as OS
+  component "Music apps on device\nSpotify (App Remote, Premium)\nMusic (systemMusicPlayer)" as MU
+}
+node "Apple-silicon Mac (M1+)" as MAC {
+  component "Same app\n(Designed for iPad;\nnative layout DCR-9)\nStudy-only mode" as A2
+}
+cloud "Internet — HTTPS / TLS 1.2+ only" as NET {
+  component "Lyrics & music\nlrclib.net/api (search, get)\naccounts.spotify.com · api.spotify.com" as N1
+  component "BYOK LLM providers\napi.anthropic.com/v1/messages\ngenerativelanguage.googleapis.com" as N2
+  component "Static & user-owned\nmodel host (GGUF, range requests)\nstatic host: curated_shelves.json\nCloudKit private DB (user's iCloud)" as N3
+}
+GH --> XC
+XC --> TF
+TF --> A1 : install
+TF --> A2 : install
+A1 --> FS
+A1 --> OS
+A1 --> MU : IPC / MediaPlayer
+A1 --> N1
+A1 --> N2
+A1 --> N3
+A2 --> N2
+A2 --> N3
+@enduml

@@ -1,0 +1,26 @@
+@startuml
+!pragma layout smetana
+!include _style.iuml
+left to right direction
+abstract class "Component" as C
+abstract class "Presentation" as P
+abstract class "Domain service" as D
+abstract class "Adapter (port implementation)" as A
+abstract class "Store" as S
+C <|-- P
+C <|-- D
+C <|-- A
+C <|-- S
+P <|-- "COM-1 Presentation (UI)"
+D <|-- "COM-5 Translation Service"
+D <|-- "COM-6 Explanation Service"
+D <|-- "COM-8 Sync Engine"
+D <|-- "COM-9 Collection, Curation & Mastery"
+A <|-- "COM-2 Now-Playing Bridge"
+A <|-- "COM-3 Identity / Sign-In"
+A <|-- "COM-4 Lyrics Service"
+A <|-- "COM-7 LLM Engine"
+A <|-- "COM-12 Model Manager"
+S <|-- "COM-10 Local Store"
+S <|-- "COM-11 Secure Store"
+@enduml

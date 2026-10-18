@@ -1,0 +1,23 @@
+@startuml
+!pragma layout smetana
+!include _style.iuml
+[*] --> NotInstalled
+NotInstalled --> CheckingRoom : user starts download\n(onboarding / Settings)
+CheckingRoom --> NotInstalled : free space < model + 500 MB\n(ONRQ-14)
+CheckingRoom --> Downloading : enough space (Wi-Fi default)
+Downloading --> Downloading : resume from last byte\n(after network loss)
+Downloading --> Failed : 3 consecutive failures
+Failed --> Downloading : Retry
+Downloading --> Verifying : all bytes received
+Verifying --> NotInstalled : SHA-256 mismatch\n(file deleted, never loaded)
+Verifying --> Installed : checksum OK\n(excluded from backup)
+Installed --> Loaded : first inference\n(memory budget <= 60 % RAM)
+Loaded --> Installed : app backgrounded /\nmemory warning (unload)
+Installed --> NotInstalled : delete model /\nDelete all (PR-10)
+note right of NotInstalled
+  Not used at all when Apple Foundation
+  Models is the selected engine (PR-9).
+  Prototype: simulated ~4 s download
+  writing a marker file.
+end note
+@enduml

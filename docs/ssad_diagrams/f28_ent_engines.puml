@@ -1,0 +1,22 @@
+@startuml
+!pragma layout smetana
+!include _style.iuml
+left to right direction
+abstract class "LLM Engine (COM-7)" as E
+abstract class "On-device engine\n(free, private, offline)" as OD
+abstract class "Cloud BYOK engine\n(user's key, user's bill)" as CL
+E <|-- OD
+E <|-- CL
+OD <|-- "Apple Foundation Models\n(iOS/macOS 26+, no download)"
+OD <|-- "llama.cpp + GGUF\n(Gemma 2B / 4B Q4)"
+OD <|-- "Demo engine\n(prototype / tests only)"
+CL <|-- "Claude API\n(claude-haiku-4-5 default)"
+CL <|-- "Gemini API\n(fast low-cost tier)"
+CL <|-- "OpenAI-compatible / LAN\n(CR-8, future)"
+abstract class "Now-Playing source (COM-2)" as N
+N <|-- "Spotify App Remote (iOS)"
+N <|-- "Apple Music system player (iOS)"
+N <|-- "Simulated / mock link"
+N <|-- "Android media session (2027)"
+N <|-- "Spotify Web API (CR-10)"
+@enduml

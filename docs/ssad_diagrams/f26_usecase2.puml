@@ -1,0 +1,37 @@
+@startuml
+!pragma layout smetana
+!include _style.iuml
+left to right direction
+actor Learner
+actor "LLM engine" as LE
+actor "User's iCloud" as IC
+rectangle "CAP-4 Study / CAP-5 Progress / CAP-6 Manage / CAP-7 Cross-device" {
+  usecase "BH-12 Explain a line" as B12
+  usecase "BH-13 Save a phrase" as B13
+  usecase "BH-14 Fix timing or\nwrong lyrics" as B14
+  usecase "BH-15 Study offline" as B15
+  usecase "BH-16 Conquer a song" as B16
+  usecase "BH-17 Review phrase box\nand statistics" as B17
+  usecase "BH-18 Configure settings\nand verify API key" as B18
+  usecase "BH-19 Manage the\non-device model" as B19
+  usecase "BH-20 Delete all data" as B20
+  usecase "BH-21 Export / import\ncollection" as B21
+  usecase "BH-22 Sync through\niCloud (planned)" as B22
+  usecase "BH-23 Escalate a hard line\nto API-key engine (planned)" as B23
+}
+Learner --> B12
+Learner --> B13
+Learner --> B14
+Learner --> B15
+Learner --> B16
+Learner --> B17
+Learner --> B18
+Learner --> B19
+Learner --> B20
+Learner --> B21
+B12 --> LE
+B22 --> IC
+B23 ..> B12 : <<extend>>
+B16 ..> B17 : <<updates>>
+B13 ..> B17 : <<updates>>
+@enduml

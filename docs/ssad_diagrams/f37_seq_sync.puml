@@ -1,0 +1,35 @@
+@startuml
+!include _style.iuml
+autonumber
+actor Learner
+participant "Music app\n(Spotify / Apple Music)" as MA
+participant "NowPlayingSource\nadapter" as NS
+participant "AppModel" as AM
+participant "TrackMatcher" as TM
+participant "LibraryView\nnow-playing bar" as LB
+participant "PlayerView" as PV
+participant "SyncEngine" as SE
+Learner -> AM : connect(.spotify | .appleMusic)
+AM -> NS : connect() (OAuth PKCE / MediaPlayer permission)
+AM -> NS : for await snapshot in snapshots
+loop on every state change / 0.5 s poll
+  MA --> NS : track, position, rate, isPlaying
+  NS --> AM : PlaybackSnapshot
+  AM -> TM : match(track, songs) (normalise, ±2 s)
+  AM --> LB : nowPlayingSong or "Add this song"
+end
+Learner -> LB : tap bar → PlayerView
+loop every display frame
+  PV -> SE : update(snapshot) on change (re-anchor)
+  PV -> SE : currentLineIndex(lines, now)
+  SE --> PV : index = binarySearch(position − offset)
+  PV -> PV : highlight + auto-scroll (pause 5 s after manual scroll)
+end
+Learner -> PV : tap line k
+PV -> SE : seekTarget(line k) = start + offset
+PV -> NS : seek(to:)
+NS -> MA : seek
+alt capability missing
+  NS --> PV : SourceError.unsupported → control disabled (ONRQ-5)
+end
+@enduml

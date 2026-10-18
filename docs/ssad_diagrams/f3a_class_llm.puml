@@ -1,0 +1,104 @@
+@startuml
+!pragma layout smetana
+!include _style.iuml
+interface LLMEngine {
+  +id : String
+  +isAvailable : Bool
+  +kind : EngineKind
+}
+interface Translator {
+  +translateSong(lines: [LyricLine], to: Language) : AsyncThrowingStream<LineResult, Error>
+}
+interface Explainer {
+  +explain(line: LyricLine, context: [LyricLine], in: Language) : Explanation
+}
+interface CloudChatEngine {
+  +transport : HTTPTransport
+  +complete(system, user, maxTokens) : String
+  +verifyKey()
+}
+interface HTTPTransport {
+  +send(URLRequest) : (Data, HTTPURLResponse)
+}
+class URLSessionTransport
+class ClaudeEngine {
+  +{static} defaultModel = "claude-haiku-4-5"
+  +{static} qualityModel = "claude-sonnet-5-5"
+  +apiKey : String
+  +model : String
+  ~check(status, body)
+}
+class GeminiEngine {
+  +{static} defaultModel = "gemini-2.5-flash"
+  +apiKey : String
+  +model : String
+}
+class DemoEngine {
+  +lineDelay : TimeInterval
+  +glossary : [String: String]
+}
+class AppleFMEngine <<iOS 26+>>
+class LlamaEngine <<placeholder>>
+class EngineFactory <<enum>> {
+  +{static} make(kind, apiKey) : TranslationEngine
+  +{static} label(for kind) : String
+}
+enum EngineKind {
+  onDevice
+  claude
+  gemini
+}
+enum LineResult {
+  translated(index, text)
+  copied(index)
+  failed(index, reason)
+}
+enum LLMError {
+  missingAPIKey
+  invalidKey
+  outOfCredit
+  rateLimited
+  server(Int)
+  network
+  malformedOutput(String)
+  refused
+  unavailable(String)
+}
+class Prompts <<enum>> {
+  +{static} version = "p1"
+  +{static} translationSystem(target)
+  +{static} translationUser(lines)
+  +{static} explanationSystem(target)
+  +{static} explanationUser(line, context)
+  +{static} context(for line, in lines, radius = 3)
+}
+class OutputValidator <<enum>> {
+  +{static} extractJSON(text)
+  +{static} translationResults(from, lines) : [LineResult]
+  +{static} explanation(from) : Explanation
+  ~{static} isDegenerate(s) : Bool
+}
+LLMEngine <|-- Translator
+LLMEngine <|-- Explainer
+Translator <|-- CloudChatEngine
+Explainer <|-- CloudChatEngine
+CloudChatEngine <|.. ClaudeEngine
+CloudChatEngine <|.. GeminiEngine
+Translator <|.. DemoEngine
+Explainer <|.. DemoEngine
+Translator <|.. AppleFMEngine
+Explainer <|.. AppleFMEngine
+Translator <|.. LlamaEngine
+Explainer <|.. LlamaEngine
+LlamaEngine --> DemoEngine : fallback
+HTTPTransport <|.. URLSessionTransport
+CloudChatEngine --> HTTPTransport
+CloudChatEngine ..> Prompts
+CloudChatEngine ..> OutputValidator
+AppleFMEngine ..> OutputValidator
+EngineFactory ..> ClaudeEngine
+EngineFactory ..> GeminiEngine
+EngineFactory ..> AppleFMEngine
+EngineFactory ..> LlamaEngine
+EngineFactory ..> DemoEngine
+@enduml

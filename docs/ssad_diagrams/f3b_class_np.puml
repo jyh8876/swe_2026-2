@@ -1,0 +1,86 @@
+@startuml
+!pragma layout smetana
+!include _style.iuml
+left to right direction
+interface NowPlayingSource {
+  +id : SourceID
+  +capabilities : Set<SourceCapability>
+  +snapshots : AsyncStream<PlaybackSnapshot>
+  +play()
+  +pause()
+  +next()
+  +previous()
+  +seek(to: TimeInterval)
+}
+class SimulatedSource {
+  -track : TrackKey
+  -anchorPosition : TimeInterval
+  -anchorDate : Date
+  -isPlaying : Bool
+  -continuations : [UUID: Continuation]
+  +load(track, autoplay)
+  -broadcast()
+}
+class AppleMusicSource {
+  -player : MPMusicPlayerController
+  +{static} connect(mockTrack) : NowPlayingSource
+}
+class SpotifySource <<stub>> {
+  +{static} redirectURI
+  +{static} clientID
+  +{static} connect(mockTrack) : NowPlayingSource
+}
+class MockMusicLink <<enum>> {
+  +{static} make(id, track) : SimulatedSource
+}
+class "AndroidSessionSource" as AS <<2027>>
+class "SpotifyWebSource" as SW <<CR-10>>
+class "ListeningSource (ShazamKit)" as LSN <<CR-5>>
+class PlaybackSnapshot {
+  +track : TrackKey
+  +position : TimeInterval
+  +reportedAt : Date
+  +rate : Double
+  +isPlaying : Bool
+}
+class SyncEngine {
+  +anchor : PlaybackSnapshot?
+  +offset : TimeInterval
+  +{static} offsetStep = 0.5
+  +update(snapshot)
+  +position(at now) : TimeInterval?
+  +currentLineIndex(in lines, at now) : Int?
+  +{static} lineIndex(for position, in lines) : Int?
+  +seekTarget(for line) : TimeInterval?
+}
+enum SourceID {
+  spotify
+  appleMusic
+  simulator
+}
+enum SourceCapability {
+  read
+  playPause
+  skip
+  seek
+}
+enum SourceError {
+  unsupported(cap)
+  notConnected
+  notInstalled
+  premiumRequired
+  permissionDenied
+}
+NowPlayingSource <|.. SimulatedSource
+NowPlayingSource <|.. AppleMusicSource
+NowPlayingSource <|.. SpotifySource
+NowPlayingSource <|.. AS
+NowPlayingSource <|.. SW
+NowPlayingSource <|.. LSN
+MockMusicLink ..> SimulatedSource
+NowPlayingSource --> PlaybackSnapshot
+SyncEngine --> PlaybackSnapshot
+NowPlayingSource --> SourceID
+NowPlayingSource --> SourceCapability
+NowPlayingSource ..> SourceError
+@enduml

@@ -1,0 +1,60 @@
+@startuml
+!pragma layout smetana
+!include _style.iuml
+hide empty members
+class "AppModel" as AM
+class "AppSettings" as AS
+class "CollectionSnapshot" as CS
+class "Song" as SO
+class "LyricLine" as LL
+class "Translation" as TR
+class "ExplanationRecord" as ER
+class "Explanation" as EX
+class "Expression" as XP
+class "Phrase" as PH
+class "ListenSession" as LS
+class "TranslationJob" as TJ
+class "TranslationProgress" as TP
+class "SyncEngine" as SE
+class "PlaybackSnapshot" as PS
+class "TrackKey" as TK
+class "MasteryRules" as MR
+class "CuratedShelf" as SH
+interface "TranslationEngine" as TE
+interface "NowPlayingSource" as NP
+interface "LyricsProvider" as LP
+interface "CollectionRepository" as CR
+interface "SecureStore" as SS
+class "LyricsCandidate" as LC
+AM "1" *-- "1" CS : collection
+AM "1" *-- "1" AS : settings
+AM --> CR : persists via
+AM --> SS : keys via
+AM --> LP : searches via
+AM --> NP : source
+AM --> TE : currentEngine()
+AM "1" --> "0..*" TJ : runs
+AM "1" --> "0..*" TP : progress
+AM --> MR
+AM "1" --> "0..*" SH : shelves
+CS "1" *-- "0..*" SO
+CS "1" *-- "0..*" LL
+CS "1" *-- "0..*" TR
+CS "1" *-- "0..*" ER
+CS "1" *-- "0..*" PH
+CS "1" *-- "0..*" LS
+SO "1" -- "1..*" LL : songID
+LL "1" -- "0..*" TR : (songID, index)
+LL "1" -- "0..*" ER : (songID, index)
+ER *-- EX
+EX "1" *-- "0..3" XP
+PH --> LL : (songID, index)
+LS --> SO
+TJ --> TE
+TJ --> LL
+SE --> PS
+PS --> TK
+SO ..> TK : trackKey
+LP --> LC
+LC ..> TK
+@enduml

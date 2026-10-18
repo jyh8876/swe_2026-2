@@ -1,0 +1,112 @@
+@startuml
+!pragma layout smetana
+!include _style.iuml
+class Song {
+  +id : UUID
+  +title, artist : String
+  +album : String?
+  +duration : TimeInterval?
+  +coverPath : String?
+  +lyricsType : LyricsType
+  +sourceProvider : String
+  +offset : TimeInterval
+  +status : SongStatus
+  +conqueredAt : Date?
+  +addedAt : Date
+  +curatedShelfID : String?
+  +isConquered : Bool
+  +trackKey : TrackKey
+}
+class LyricLine {
+  +songID : UUID
+  +index : Int
+  +start, end : TimeInterval?
+  +text : String
+  +detectedLanguage : String?
+}
+class Translation {
+  +songID, index
+  +targetLanguage, engineID, promptVersion
+  +text : String?
+  +outcome : Outcome
+  +createdAt : Date
+}
+class ExplanationRecord {
+  +songID, index
+  +targetLanguage, engineID, promptVersion
+  +explanation : Explanation
+  +createdAt : Date
+}
+class Explanation {
+  +expressions : [Expression] (≤ 3)
+  +structure, usage, example : String
+}
+class Phrase {
+  +id : UUID
+  +songID, index
+  +savedAt : Date
+}
+class ListenSession {
+  +songID : UUID
+  +startedAt : Date
+  +linesReached : Set<Int>
+  +explanationsOpened : Set<Int>
+}
+class CollectionSnapshot {
+  +songs, lines, translations
+  +explanations, phrases, sessions
+  +songsNewestFirst
+  +translationText(...)
+  +stats : Stats
+  +existingSong(matching)
+  +addSong / updateSong / deleteSong
+  +commit(result, ...)
+  +toggleSaved(...)
+  +cacheExplanation(...)
+}
+interface CollectionRepository {
+  +load() : CollectionSnapshot
+  +save(snapshot)
+  +deleteAll()
+}
+class JSONFileRepository
+class InMemoryRepository
+class "SQLiteRepository" as SQ <<planned, LOS-3>>
+class "CloudKitMirror" as CKM <<planned, RQ-18>>
+interface CollectionPorter {
+  +export() : Data
+  +import(data) : ImportReport
+}
+class CollectionMerger <<enum>> {
+  +{static} export(snapshot)
+  +{static} decode(data) : ExportDocument
+  +{static} merge(incoming, into base) : ImportReport
+}
+class ExportDocument {
+  +{static} currentSchemaVersion = 1
+  +schemaVersion, exportedAt, app
+  +collection : CollectionSnapshot
+}
+class MasteryRules {
+  +playThroughShare = 0.9
+  +suggestAfterPlayThroughs = 3
+  +suggestExplanationShare = 0.3
+  +canMarkConquered(...)
+  +shouldSuggest(...)
+}
+CollectionSnapshot *-- Song
+CollectionSnapshot *-- LyricLine
+CollectionSnapshot *-- Translation
+CollectionSnapshot *-- ExplanationRecord
+CollectionSnapshot *-- Phrase
+CollectionSnapshot *-- ListenSession
+ExplanationRecord *-- Explanation
+CollectionRepository <|.. JSONFileRepository
+CollectionRepository <|.. InMemoryRepository
+CollectionRepository <|.. SQ
+SQ ..> CKM
+CollectionPorter <|.. CollectionMerger
+CollectionMerger ..> ExportDocument
+ExportDocument *-- CollectionSnapshot
+MasteryRules ..> CollectionSnapshot
+@enduml

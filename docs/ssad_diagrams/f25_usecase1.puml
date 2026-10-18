@@ -1,0 +1,39 @@
+@startuml
+!pragma layout smetana
+!include _style.iuml
+left to right direction
+actor Learner
+actor "Music app" as MA
+actor "LRCLIB" as LR
+actor "LLM engine" as LE
+rectangle "CAP-1 Getting started / CAP-2 Follow what is playing / CAP-3 Build the collection" {
+  usecase "BH-01 Onboard and\nchoose engine" as B1
+  usecase "BH-02 Connect a\nmusic source" as B2
+  usecase "BH-03 Sign in with\nApple / Google (planned)" as B3
+  usecase "BH-04 Detect the song\nnow playing" as B4
+  usecase "BH-05 Control playback" as B5
+  usecase "BH-06 Follow synced lyrics" as B6
+  usecase "BH-07 Search a song" as B7
+  usecase "BH-08 Add a song" as B8
+  usecase "BH-09 Pre-translate\nthe whole song" as B9
+  usecase "BH-10 Confirm save" as B10
+  usecase "BH-11 Pick from a\ncurated shelf" as B11
+}
+Learner --> B1
+Learner --> B2
+Learner --> B3
+Learner --> B5
+Learner --> B6
+Learner --> B7
+Learner --> B11
+B4 --> MA
+B5 --> MA
+B7 --> LR
+B9 --> LE
+B6 ..> B4 : <<include>>
+B8 ..> B9 : <<include>>
+B7 ..> B8 : <<extend>>
+B11 ..> B8 : <<extend>>
+B9 ..> B10 : <<extend>>
+B2 ..> B4 : <<enables>>
+@enduml

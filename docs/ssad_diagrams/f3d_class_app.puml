@@ -1,0 +1,76 @@
+@startuml
+!pragma layout smetana
+!include _style.iuml
+class AppModel <<@MainActor @Observable>> {
+  -collection : CollectionSnapshot
+  +settings : AppSettings
+  +libraryPath : [Route]
+  +selectedTab : Tab
+  -progress : [UUID: TranslationProgress]
+  -nowPlaying : PlaybackSnapshot?
+  -activeSourceID : SourceID?
+  +banner : Banner?
+  +shelves : [CuratedShelf]
+  -jobs : [UUID: Task]
+  +addSong(draft, cover) : UUID
+  +startTranslation(songID, forceEngine)
+  +retranslate(songID)
+  +handleScenePhase(phase)
+  +explain(songID, index, engine) : Explanation
+  +toggleSaved / setConquered / setOffset / deleteSong
+  +recordSession(session)
+  +connect(id) / disconnect(id) / playDemo(song)
+  +exportData() / importData(data)
+  +deleteAll()
+}
+class AppSettings {
+  +hasOnboarded
+  +engine : EngineKind
+  +targetLanguage
+  +showTranslation
+  +theme : AppTheme.ID
+  +cloudNoticeAccepted
+  +connectedSources : Set<SourceID>
+}
+enum Route {
+  search(prefill)
+  add(AddSongDraft)
+  translating(UUID)
+  saved(UUID)
+  player(UUID)
+}
+class AddSongDraft
+class RootView
+class MainTabView
+class OnboardingView <<FG-00>>
+class LibraryView <<FG-01>>
+class SearchView <<FG-02>>
+class AddSongView <<FG-03>>
+class TranslatingView <<FG-04>>
+class SavedView <<FG-05>>
+class PlayerView <<FG-06>>
+class LineDetailView <<FG-07>>
+class PhraseBoxView <<FG-08>>
+class SettingsView <<FG-09>>
+class APIKeyEntryView
+class NowPlayingBar <<DCR-2>>
+class CuratedShelvesView <<DCR-8>>
+RootView --> OnboardingView
+RootView --> MainTabView
+MainTabView --> LibraryView
+MainTabView --> PhraseBoxView
+MainTabView --> SettingsView : sheet
+LibraryView --> NowPlayingBar
+LibraryView --> CuratedShelvesView
+MainTabView ..> Route : navigationDestination
+Route ..> SearchView
+Route ..> AddSongView
+Route ..> TranslatingView
+Route ..> SavedView
+Route ..> PlayerView
+PlayerView --> LineDetailView : sheet
+SettingsView --> APIKeyEntryView
+Route --> AddSongDraft
+AppModel *-- AppSettings
+AppModel --> Route
+@enduml

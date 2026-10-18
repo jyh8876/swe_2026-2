@@ -1,0 +1,66 @@
+@startuml
+!pragma layout smetana
+!include _style.iuml
+left to right direction
+package "LyricsTranslator (app target) — developed" as APP {
+  package "App" as P_APP
+  package "Features" as P_FEAT
+  package "DesignSystem" as P_DS
+  package "Platform" as P_PLAT
+  package "Resources" as P_RES
+}
+package "LyricsCore (Swift package) — developed" as CORE {
+  package "Models" as M
+  package "Lyrics" as LY
+  package "Sync" as SY
+  package "NowPlaying" as NP
+  package "LLM" as LLM
+  package "Services" as SV
+  package "Collection" as CO
+  package "Security" as SE
+  package "Curation" as CU
+}
+package "LyricsCoreTests — developed" as TST
+package "Reused: Apple SDK (COTS)" as SDK {
+  package "SwiftUI / Observation" as S1
+  package "MediaPlayer" as S2
+  package "FoundationModels" as S3
+  package "NaturalLanguage" as S4
+  package "Security (Keychain)" as S5
+  package "Network" as S6
+  package "Foundation / URLSession" as S7
+  package "CloudKit / SwiftData (planned)" as S8
+  package "AuthenticationServices (planned)" as S9
+}
+package "Reused: third-party (optional, pinned)" as TP {
+  package "SpotifyiOS.xcframework" as T1
+  package "llama.cpp Swift package\n(if chosen in S1)" as T2
+  package "GoogleSignIn (planned, OI-10)" as T3
+}
+P_FEAT ..> P_APP
+P_FEAT ..> P_DS
+P_APP ..> CORE
+P_APP ..> P_PLAT
+P_PLAT ..> CORE
+P_FEAT ..> S1
+P_PLAT ..> S2
+P_PLAT ..> S3
+P_PLAT ..> S4
+P_PLAT ..> S5
+P_PLAT ..> S6
+P_PLAT ..> T1
+P_PLAT ..> T2
+P_APP ..> S8
+P_APP ..> S9
+P_APP ..> T3
+CORE ..> S7
+TST ..> CORE
+SV ..> LLM
+SV ..> M
+LLM ..> M
+LY ..> M
+SY ..> NP
+CO ..> M
+CO ..> LLM
+CU ..> LY
+@enduml

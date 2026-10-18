@@ -1,0 +1,32 @@
+@startuml
+!include _style.iuml
+autonumber
+actor Learner
+participant "SettingsView\n(FG-09 Data)" as SV
+participant "AppModel" as AM
+participant "CollectionMerger" as CM
+participant "CollectionRepository" as CR
+== Export ==
+Learner -> SV : Export
+SV -> AM : exportData()
+AM -> CM : export(snapshot)
+CM --> AM : JSON (schemaVersion 1, ISO-8601 dates, sorted keys)
+AM --> SV : fileExporter(.json)
+== Import on another device ==
+Learner -> SV : Import file
+SV -> AM : importData(data)
+AM -> CM : decode(data)
+alt invalid file / newer schema
+  CM --> SV : ImportError → message, nothing changed (ONRQ-16)
+else valid
+  CM --> AM : ExportDocument
+  AM -> CM : merge(incoming, into: &collection)
+  note right of CM
+    union of songs and phrases
+    same record: most recent change wins
+    nothing deleted by a merge
+  end note
+  AM -> CR : save(snapshot)
+  AM --> SV : ImportReport(songsAdded, songsUpdated, phrasesAdded)
+end
+@enduml

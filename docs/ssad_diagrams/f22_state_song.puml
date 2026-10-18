@@ -1,0 +1,21 @@
+@startuml
+!pragma layout smetana
+!include _style.iuml
+[*] --> Draft : user opens FG-03
+Draft --> Translating : Save (RQ-6)\nsong + lines committed
+state Translating {
+  [*] --> Running
+  Running --> Paused : app backgrounded\n(on-device, ONRQ-9)\nor memory warning
+  Paused --> Running : app active again\n(only untranslated lines)
+  Running --> Running : line result committed\n(per-line commit, LOS-3)
+}
+Translating --> Done : every line translated\nor copied (LOS-2)
+Translating --> Failed : any line failed\nor engine error (ONRQ-10/12)
+Failed --> Translating : Retry /\nRe-translate
+Done --> Translating : Re-translate with\ncurrent engine (RQ-14)
+Done --> Conquered : "I conquered this song"\n(>= 1 play-through, RQ-13)
+Conquered --> Done : undo
+Done --> [*] : delete song
+Failed --> [*] : delete song
+Conquered --> [*] : delete song
+@enduml

@@ -1,0 +1,58 @@
+skinparam dpi 150
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+skinparam shadowing false
+skinparam roundCorner 6
+skinparam ArrowColor #3B4A63
+skinparam ArrowFontSize 10
+skinparam componentStyle uml2
+skinparam component {
+  BackgroundColor #D9E2F1
+  BorderColor #3B4A63
+}
+skinparam rectangle {
+  BackgroundColor #FFFFFF
+  BorderColor #3B4A63
+}
+skinparam node {
+  BackgroundColor #F2F2F2
+  BorderColor #3B4A63
+}
+skinparam database {
+  BackgroundColor #F2F2F2
+  BorderColor #3B4A63
+}
+skinparam cloud {
+  BackgroundColor #F4F5F7
+  BorderColor #6B7A90
+}
+skinparam package {
+  BackgroundColor #FFFFFF
+  BorderColor #3B4A63
+}
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #3B4A63
+  HeaderBackgroundColor #D9E2F1
+}
+skinparam state {
+  BackgroundColor #D9E2F1
+  BorderColor #3B4A63
+}
+skinparam usecase {
+  BackgroundColor #D9E2F1
+  BorderColor #3B4A63
+}
+skinparam actor {
+  BorderColor #3B4A63
+}
+skinparam sequence {
+  ParticipantBackgroundColor #D9E2F1
+  ParticipantBorderColor #3B4A63
+  LifeLineBorderColor #6B7A90
+  BoxBorderColor #6B7A90
+}
+skinparam note {
+  BackgroundColor #FFF8DC
+  BorderColor #B8A060
+}

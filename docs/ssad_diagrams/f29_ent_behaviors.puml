@@ -1,0 +1,43 @@
+@startuml
+!pragma layout smetana
+!include _style.iuml
+left to right direction
+abstract class "LyricsTranslator behaviours" as R
+abstract class "CAP-1 Getting started" as K1
+abstract class "CAP-2 Follow what is playing" as K2
+abstract class "CAP-3 Build the collection" as K3
+abstract class "CAP-4 Study" as K4
+abstract class "CAP-5 Progress" as K5
+abstract class "CAP-6 Manage" as K6
+abstract class "CAP-7 Cross-device" as K7
+R <|-- K1
+R <|-- K2
+R <|-- K3
+R <|-- K4
+R <|-- K5
+R <|-- K6
+R <|-- K7
+K1 <|-- "BH-01 Onboard"
+K1 <|-- "BH-02 Connect source"
+K1 <|-- "BH-03 Sign in"
+K2 <|-- "BH-04 Detect now playing"
+K2 <|-- "BH-05 Control playback"
+K2 <|-- "BH-06 Follow synced lyrics"
+K3 <|-- "BH-07 Search"
+K3 <|-- "BH-08 Add song"
+K3 <|-- "BH-09 Pre-translate"
+K3 <|-- "BH-10 Confirm save"
+K3 <|-- "BH-11 Curated shelf"
+K4 <|-- "BH-12 Explain line"
+K4 <|-- "BH-13 Save phrase"
+K4 <|-- "BH-14 Fix timing"
+K4 <|-- "BH-15 Offline study"
+K4 <|-- "BH-23 Escalate hard line"
+K5 <|-- "BH-16 Conquer"
+K5 <|-- "BH-17 Phrase box & stats"
+K6 <|-- "BH-18 Settings & key"
+K6 <|-- "BH-19 Model"
+K6 <|-- "BH-20 Delete all"
+K7 <|-- "BH-21 Export / import"
+K7 <|-- "BH-22 iCloud sync"
+@enduml

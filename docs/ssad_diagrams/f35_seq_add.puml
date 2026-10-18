@@ -1,0 +1,41 @@
+@startuml
+!include _style.iuml
+autonumber
+actor Learner
+participant "SearchView\n(FG-02)" as SV
+participant "AddSongView\n(FG-03)" as AV
+participant "AppModel" as AM
+participant "LyricsProvider\n(LRCLIB)" as LP
+participant "LRCParser" as P
+participant "LanguageDetector" as LD
+participant "TranslationJob" as TJ
+participant "TranslationEngine" as TE
+participant "CollectionRepository" as CR
+Learner -> SV : type "viva la vida"
+SV -> LP : search(query) [debounced]
+LP --> SV : [LyricsCandidate] (Synced/Plain/No badge)
+Learner -> SV : tap result
+SV -> AM : existingSong(matching:)?
+alt duplicate (title+artist, ±2 s)
+  AM --> SV : existing Song → open its LP
+else new song
+  SV -> AV : push .add(AddSongDraft) pre-filled
+  Learner -> AV : Save (one tap)
+  AV -> AM : addSong(draft, cover)
+  AM -> P : parse(lyrics) — ≥80 % tagged → synced
+  AM -> CR : save(snapshot + Song + LyricLines)
+  AM -> LD : detect(line) per line (≥0.5 confidence)
+  AM -> TJ : run(alreadyDone, commit, progress)
+  AV -> AV : replace route with .translating(id)
+  TJ -> TE : translateSong(pending, target)
+  loop each LineResult (any order)
+    TE --> TJ : .translated / .copied / .failed
+    TJ -> AM : commit(result)
+    AM -> CR : save (per-line commit)
+    TJ -> AM : progress(n/N, ETA, first-line preview)
+  end
+  TJ -> AM : mark missing lines .failed (LOS-2)
+  AM -> CR : status = done | failed
+  AM --> Learner : FG-05 Saved (only if FG-04 visible) → "Study now"
+end
+@enduml

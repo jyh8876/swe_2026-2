@@ -1,0 +1,72 @@
+@startuml
+!pragma layout smetana
+!include _style.iuml
+hide circle
+skinparam linetype ortho
+entity "song" as song {
+  * id : TEXT <<PK>> (UUID)
+  --
+  title : TEXT NOT NULL
+  artist : TEXT NOT NULL
+  album : TEXT
+  duration : REAL
+  cover_path : TEXT
+  lyrics_type : TEXT (synced|plain)
+  source_provider : TEXT
+  offset : REAL DEFAULT 0
+  status : TEXT (translating|done|failed)
+  conquered_at : REAL
+  added_at : REAL NOT NULL
+  curated_shelf_id : TEXT
+  updated_at : REAL (sync)
+}
+entity "lyric_line" as line {
+  * song_id : TEXT <<FK>>
+  * idx : INTEGER
+  --
+  start : REAL
+  end : REAL
+  text : TEXT NOT NULL
+  detected_language : TEXT
+}
+entity "translation" as tr {
+  * song_id, idx <<FK>>
+  * target_language : TEXT
+  * engine_id : TEXT
+  * prompt_version : TEXT
+  * created_at : REAL
+  --
+  text : TEXT
+  outcome : TEXT (translated|copied|failed)
+}
+entity "explanation" as ex {
+  * song_id, idx <<FK>>
+  * target_language, engine_id, prompt_version
+  --
+  json : TEXT (Explanation)
+  created_at : REAL
+}
+entity "phrase" as ph {
+  * id : TEXT <<PK>>
+  --
+  song_id, idx <<FK>> UNIQUE
+  saved_at : REAL
+}
+entity "listen_session" as ls {
+  * song_id <<FK>>
+  * started_at : REAL
+  --
+  lines_reached : TEXT (JSON int set)
+  explanations_opened : TEXT (JSON int set)
+}
+entity "schema_meta" as meta {
+  * key : TEXT
+  --
+  value : TEXT (schema version, migrations)
+}
+song ||--|{ line
+line ||--o{ tr
+line ||--o{ ex
+line ||--o{ ph
+song ||--o{ ls
+@enduml

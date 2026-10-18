@@ -1,0 +1,38 @@
+@startuml
+!include _style.iuml
+autonumber
+actor Learner
+participant "PlayerView\n(FG-06)" as PV
+participant "LineDetailView\n(FG-07)" as LV
+participant "AppModel" as AM
+participant "CollectionSnapshot" as CS
+participant "Prompts" as PR
+participant "Explainer\n(engine)" as EN
+participant "OutputValidator" as OV
+participant "CollectionRepository" as CR
+Learner -> PV : tap lyric line i
+PV -> LV : present sheet (half / full)
+LV -> AM : explain(songID, i)
+AM -> CS : explanation(songID, i, target)?
+alt cached (≤100 ms)
+  CS --> LV : Explanation
+else first tap
+  LV -> LV : show skeleton loader
+  AM -> PR : context(for: line, radius 3)
+  AM -> EN : explain(line, context, target)
+  EN -> OV : explanation(from: text)
+  alt invalid JSON / schema
+    EN -> EN : retry once ("Output valid JSON only")
+  end
+  EN --> AM : Explanation (≤3 expressions)
+  AM -> CR : cacheExplanation(record keyed by engineID + promptVersion)
+  AM --> LV : Explanation
+end
+alt LLMError.refused / malformed
+  LV --> Learner : "explanation unavailable" + try other engine
+end
+Learner -> LV : "Replay this line"
+LV -> AM : source.seek(to: line.start + offset)
+Learner -> LV : "Save"
+LV -> AM : toggleSaved(songID, i) → Phrase
+@enduml

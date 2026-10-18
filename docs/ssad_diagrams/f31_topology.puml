@@ -1,0 +1,16 @@
+@startuml
+!pragma layout smetana
+!include _style.iuml
+top to bottom direction
+rectangle "<b>Presentation layer</b> — SwiftUI views (LyricsTranslator target)\nFeatures: Onboarding · Library · Search · AddSong · Translating · Saved · Player · LineDetail · PhraseBox · Settings\nDesignSystem: AppTheme (Midnight, Woody) · LPCard · Vinyl · Badges · Banner · Skeleton" as L1
+rectangle "<b>Application layer</b> — orchestration (View-Model)\nAppModel (@MainActor, @Observable): state, navigation (Route), job control, source attach, banners\nAppSettings (UserDefaults) · EngineFactory (engine selection policy)" as L2
+rectangle "<b>Domain core</b> — LyricsCore Swift package (platform-free; no UI imports; no third-party dependencies)\nServices: LRCParser · TrackMatcher · SyncEngine · TranslationJob · OutputValidator · Prompts · MasteryRules · CollectionMerger · Curation\nModel: Song · LyricLine · Translation · ExplanationRecord · Phrase · ListenSession · CollectionSnapshot · TrackKey · Language" as L3
+rectangle "<b>Ports</b> (protocols, SSRD A.III)\nLyricsProvider · NowPlayingSource · Translator / Explainer (LLMEngine) · SecureStore · CollectionRepository · CollectionPorter · HTTPTransport" as L4
+rectangle "<b>Adapter layer</b> — implementations of the ports\nCore: LRCLIBClient · ClaudeEngine · GeminiEngine · DemoEngine · SimulatedSource · JSONFileRepository (→ SQLite)\nPlatform: AppleMusicSource · SpotifySource · AppleFMEngine · LlamaEngine · KeychainSecureStore · ModelManager\n               NetworkMonitor · LanguageDetector · CoverStore · DeviceCapability · (planned) CloudKitSync · SignInService" as L5
+cloud "<b>External systems</b>: Spotify / Apple Music apps · LRCLIB · Claude API · Gemini API · model host · user's iCloud · Apple / Google identity · static host" as L6
+L1 --> L2 : user intents / observes state
+L2 --> L3 : calls services, mutates snapshot
+L3 --> L4 : depends only on abstractions
+L4 <|.. L5 : implemented by (injected at AppModel init)
+L5 --> L6 : HTTPS · IPC · OS frameworks
+@enduml

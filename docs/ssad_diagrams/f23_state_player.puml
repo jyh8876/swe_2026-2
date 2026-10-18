@@ -1,0 +1,13 @@
+@startuml
+!pragma layout smetana
+!include _style.iuml
+[*] --> StudyOnly
+state "Study-only mode" as StudyOnly : lyrics + translations + explanations\nno transport, manual scroll (DCR-7)
+state "Linked (synced)" as LinkedSynced : highlight + auto-scroll\ntap line = seek, transport
+state "Linked (plain)" as LinkedPlain : transport + progress\nmanual scroll, no highlight
+StudyOnly --> LinkedSynced : source connected AND\nplaying this song AND synced lyrics
+StudyOnly --> LinkedPlain : source connected AND\nplaying this song AND plain lyrics
+LinkedSynced --> StudyOnly : source lost / revoked (ONRQ-6)\nor track changed (ONRQ-15)
+LinkedPlain --> StudyOnly : source lost / track changed
+LinkedSynced --> LinkedSynced : snapshot received:\nSyncEngine re-anchors
+@enduml

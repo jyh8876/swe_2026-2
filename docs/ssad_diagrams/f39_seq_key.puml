@@ -1,0 +1,34 @@
+@startuml
+!include _style.iuml
+autonumber
+actor Learner
+participant "OnboardingView /\nSettingsView" as UI
+participant "APIKeyEntryView" as KV
+participant "CloudChatEngine\n(Claude / Gemini)" as CE
+participant "SecureStore\n(Keychain)" as SS
+participant "AppModel" as AM
+participant "DeviceCapability" as DC
+participant "ModelManager" as MM
+== Engine choice (FG-00 / FG-09) ==
+UI -> DC : canRunOnDevice? (RAM ≥ 6 GB or Apple FM)
+alt on-device chosen and allowed
+  UI -> MM : download(progress) if llama.cpp engine and not installed
+  MM -> MM : room check, resumable download, SHA-256 verify
+else device too small
+  UI --> Learner : On-device disabled + one-line reason; offer API key
+end
+== Verify key (RQ-14) ==
+Learner -> KV : paste key, tap "Verify key"
+KV -> CE : verifyKey() — one minimal request (max_tokens 5)
+alt 2xx
+  CE --> KV : OK
+  KV -> SS : set(key, .claudeAPIKey / .geminiAPIKey)
+  KV --> Learner : "Key verified", key masked (sk-ant-…a1b2)
+else 401/403
+  CE --> KV : LLMError.invalidKey
+else 429 / 5xx
+  CE -> CE : withBackoff (3 attempts, 0.5 s × 2^n)
+end
+KV -> AM : settings.engine = .claude / .gemini
+AM --> Learner : one-time cloud privacy notice before first BYOK use (SIR-3)
+@enduml

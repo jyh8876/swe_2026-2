@@ -1,0 +1,51 @@
+@startuml
+!pragma layout smetana
+!include _style.iuml
+left to right direction
+actor "Learner" as U
+rectangle "LyricsTranslator app (system boundary: the user's iPhone / Apple-silicon Mac)" {
+  component "COM-1\nPresentation (UI)" as C1
+  component "COM-2\nNow-Playing Bridge" as C2
+  component "COM-3\nIdentity / Sign-In\n<<planned>>" as C3
+  component "COM-4\nLyrics Service" as C4
+  component "COM-5\nTranslation Service" as C5
+  component "COM-6\nExplanation Service" as C6
+  component "COM-7\nLLM Engine" as C7
+  component "COM-8\nSync Engine" as C8
+  component "COM-9\nCollection, Curation\n& Mastery" as C9
+  component "COM-10\nLocal Store" as C10
+  component "COM-11\nSecure Store" as C11
+  component "COM-12\nModel Manager" as C12
+}
+cloud "Music apps\n(Spotify, Apple Music)" as E1
+cloud "LRCLIB" as E2
+cloud "Claude API /\nGemini API (BYOK)" as E3
+cloud "Model host\n(GGUF)" as E4
+cloud "User's iCloud\n(CloudKit)" as E5
+cloud "Apple / Google\nidentity" as E6
+cloud "Static file host\n(shelves)" as E7
+U --> C1
+C1 --> C2
+C1 --> C9
+C1 --> C5
+C1 --> C6
+C1 --> C3
+C2 --> C8
+C2 --> E1
+C4 --> E2
+C5 --> C4
+C5 --> C7
+C6 --> C7
+C7 --> C12
+C7 --> E3
+C12 --> E4
+C9 --> C10
+C9 --> E5
+C9 --> E7
+C5 --> C10
+C6 --> C10
+C7 --> C11
+C2 --> C11
+C3 --> E6
+C3 --> C11
+@enduml
