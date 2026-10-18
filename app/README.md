@@ -27,7 +27,13 @@ app/
 export PATH=$HOME/sdk/flutter/bin:$PATH ANDROID_HOME=$HOME/sdk/android
 flutter test                    # core tests
 flutter build apk --release     # → build/app/outputs/flutter-apk/app-release.apk
+
+# End-to-end flow on an emulator or device (onboarding → add demo song → play → save a line → tabs);
+# screenshots land in build/device_shots/
+flutter drive --driver test_driver/integration_test.dart --target integration_test/app_flow_test.dart
 ```
+
+The release build turns R8 minification off on purpose: `shared_preferences_android` and `path_provider_android` reach their Kotlin code through `package:jni`, and a minified APK hangs on start. `flutter drive` runs a debug build, so check a release APK by hand before shipping.
 
 iOS needs a Mac with Xcode: run `flutter build ios`, or open `ios/Runner.xcworkspace`. The bundle ID is `com.team9.lyricstranslator`, the same as the native prototype.
 
