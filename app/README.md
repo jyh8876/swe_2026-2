@@ -35,7 +35,7 @@ iOS needs a Mac with Xcode: run `flutter build ios`, or open `ios/Runner.xcworks
 
 - Search on LRCLIB (with Synced / Plain / No-lyrics badges), manual add with LRC auto-detection, and a duplicate check.
 - Whole-song pre-translation with a commit after each line and resume on relaunch. On-device jobs pause in the background.
-- A synced lyrics player with auto-scroll that pauses for 5 s after a manual scroll, a ±0.5 s offset, seek, and the gold-LP "conquered" flow.
+- A synced lyrics player that follows the current line until you scroll (then **현재 줄로 이동** resumes it), a ±0.5 s offset, seek that snaps to saved lines, and the gold-LP "conquered" flow.
 - Line explanations (cached) and the phrase box (likes tab) with undo.
 - Claude and Gemini BYOK with key verification. Keys go to the Keychain on iOS and Keystore-backed storage on Android.
 - Export and import use the **same JSON schema as iOS**, so a collection can move between an iPhone and an Android phone.
