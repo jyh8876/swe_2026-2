@@ -36,38 +36,44 @@ class CollectionSnapshot {
         phrases = phrases ?? [],
         sessions = sessions ?? [];
 
+  // ── Indexes ──
+  // Lookups used for every lyric row (translation, saved state, lines of a song) go through maps
+  // built once per change instead of scanning every list. The mutation methods below mark the
+  // collection changed; code that edits the lists directly calls [touch]. The list lengths are part
+  // of the check as a safety net.
+
+  int _version = 0;
+  _Index? _index;
+  Object? _indexKey;
+
+  /// Increases whenever the collection changes; use it to cache derived values.
+  int get version => _version;
+
+  void touch() => _version++;
+
+  _Index get _idx {
+    final key = (_version, songs.length, lines.length, translations.length, phrases.length, explanations.length);
+    if (_index == null || _indexKey != key) {
+      _index = _Index(this);
+      _indexKey = key;
+    }
+    return _index!;
+  }
+
   // ── Queries ──
 
   /// Newest first (RQ-9).
   List<Song> get songsNewestFirst => [...songs]..sort((a, b) => b.addedAt.compareTo(a.addedAt));
 
-  Song? song(String id) {
-    for (final s in songs) {
-      if (s.id == id) return s;
-    }
-    return null;
-  }
+  Song? song(String id) => _idx.songs[id];
 
-  List<LyricLine> linesFor(String songID) =>
-      lines.where((l) => l.songID == songID).toList()..sort((a, b) => a.index.compareTo(b.index));
+  /// The song's lines in order. The list is shared and read-only.
+  List<LyricLine> linesFor(String songID) => _idx.lines[songID] ?? const [];
 
-  LyricLine? line(String songID, int index) {
-    for (final l in lines) {
-      if (l.songID == songID && l.index == index) return l;
-    }
-    return null;
-  }
+  LyricLine? line(String songID, int index) => _idx.line['$songID\u0000$index'];
 
   /// Latest translation of a line for a target language, any engine.
-  Translation? translation(String songID, int index, String target) {
-    Translation? best;
-    for (final t in translations) {
-      if (t.songID == songID && t.index == index && t.targetLanguage == target) {
-        if (best == null || t.createdAt.isAfter(best.createdAt) || t.createdAt == best.createdAt) best = t;
-      }
-    }
-    return best;
-  }
+  Translation? translation(String songID, int index, String target) => _idx.translation['$songID\u0000$index\u0000$target'];
 
   /// Display text for a line's translation: copied lines show a dash (RQ-15).
   String? translationText(String songID, int index, String target) {
@@ -80,23 +86,11 @@ class CollectionSnapshot {
     };
   }
 
-  int translatedCount(String songID, String target) => translations
-      .where((t) => t.songID == songID && t.targetLanguage == target && t.outcome != Outcome.failed)
-      .map((t) => t.index)
-      .toSet()
-      .length;
+  int translatedCount(String songID, String target) => _idx.translated['$songID\u0000$target']?.length ?? 0;
 
-  ExplanationRecord? explanation(String songID, int index, String target) {
-    ExplanationRecord? best;
-    for (final e in explanations) {
-      if (e.songID == songID && e.index == index && e.targetLanguage == target) {
-        if (best == null || !e.createdAt.isBefore(best.createdAt)) best = e;
-      }
-    }
-    return best;
-  }
+  ExplanationRecord? explanation(String songID, int index, String target) => _idx.explanation['$songID\u0000$index\u0000$target'];
 
-  bool isSaved(String songID, int index) => phrases.any((p) => p.songID == songID && p.index == index);
+  bool isSaved(String songID, int index) => _idx.saved.contains('$songID\u0000$index');
 
   Stats get stats => Stats(songs.length, songs.where((s) => s.isConquered).length, phrases.length);
 
@@ -113,6 +107,7 @@ class CollectionSnapshot {
   void addSong(Song song, LyricsDocument document) {
     songs.add(song);
     lines.addAll(document.lyricLines(song.id));
+    touch();
   }
 
   void updateSong(String id, void Function(Song) change) {
@@ -135,6 +130,7 @@ class CollectionSnapshot {
     songs.removeWhere((s) => s.id == id);
     explanations.removeWhere((e) => e.songID == id && !(keepPhrases && kept.contains(e.index)));
     sessions.removeWhere((s) => s.songID == id);
+    touch();
   }
 
   /// Commits one line result immediately (ONRQ-9, LOS-3).
@@ -152,11 +148,13 @@ class CollectionSnapshot {
         Failed() => Outcome.failed,
       },
     ));
+    touch();
   }
 
   /// Star toggle (RQ-10/RQ-12). Returns the new saved state.
   bool toggleSaved(String songID, int index) {
     final i = phrases.indexWhere((p) => p.songID == songID && p.index == index);
+    touch();
     if (i >= 0) {
       phrases.removeAt(i);
       return false;
@@ -165,7 +163,10 @@ class CollectionSnapshot {
     return true;
   }
 
-  void cacheExplanation(ExplanationRecord r) => explanations.add(r);
+  void cacheExplanation(ExplanationRecord r) {
+    explanations.add(r);
+    touch();
+  }
 
   // ── Coding ──
 
@@ -189,6 +190,44 @@ class CollectionSnapshot {
       phrases: list('phrases').map((e) => Phrase.fromJson(e, c)).toList(),
       sessions: list('sessions').map((e) => ListenSession.fromJson(e, c)).toList(),
     );
+  }
+}
+
+/// Lookup maps for one version of a [CollectionSnapshot]. Ties keep the record that comes later,
+/// as the old linear scans did.
+class _Index {
+  final songs = <String, Song>{};
+  final lines = <String, List<LyricLine>>{};
+  final line = <String, LyricLine>{};
+  final translation = <String, Translation>{};
+  final translated = <String, Set<int>>{};
+  final explanation = <String, ExplanationRecord>{};
+  final saved = <String>{};
+
+  _Index(CollectionSnapshot c) {
+    for (final s in c.songs) {
+      songs[s.id] = s;
+    }
+    final grouped = <String, List<LyricLine>>{};
+    for (final l in c.lines) {
+      (grouped[l.songID] ??= []).add(l);
+      line['${l.songID}\u0000${l.index}'] = l;
+    }
+    grouped.forEach((k, v) => lines[k] = List.unmodifiable(v..sort((a, b) => a.index.compareTo(b.index))));
+    for (final t in c.translations) {
+      final k = '${t.songID}\u0000${t.index}\u0000${t.targetLanguage}';
+      final best = translation[k];
+      if (best == null || !t.createdAt.isBefore(best.createdAt)) translation[k] = t;
+      if (t.outcome != Outcome.failed) (translated['${t.songID}\u0000${t.targetLanguage}'] ??= <int>{}).add(t.index);
+    }
+    for (final e in c.explanations) {
+      final k = '${e.songID}\u0000${e.index}\u0000${e.targetLanguage}';
+      final best = explanation[k];
+      if (best == null || !e.createdAt.isBefore(best.createdAt)) explanation[k] = e;
+    }
+    for (final p in c.phrases) {
+      saved.add('${p.songID}\u0000${p.index}');
+    }
   }
 }
 

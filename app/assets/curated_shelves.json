@@ -1,17 +1,74 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-09",
+  "updatedAt": "2026-10-31",
   "shelves": [
     {
       "id": "easy-first",
       "title": "처음 공부하기 좋은 노래",
       "subtitle": "Easy first songs",
       "songs": [
-        { "title": "Viva La Vida", "artist": "Coldplay", "duration": 242 },
-        { "title": "Perfect", "artist": "Ed Sheeran", "duration": 263 },
-        { "title": "Count on Me", "artist": "Bruno Mars", "duration": 197 },
-        { "title": "Let It Be", "artist": "The Beatles", "duration": 243 },
-        { "title": "Yellow", "artist": "Coldplay", "duration": 269 }
+        {
+          "title": "Viva La Vida",
+          "artist": "Coldplay",
+          "duration": 242
+        },
+        {
+          "title": "Perfect",
+          "artist": "Ed Sheeran",
+          "duration": 263
+        },
+        {
+          "title": "Count on Me",
+          "artist": "Bruno Mars",
+          "duration": 197
+        },
+        {
+          "title": "Let It Be",
+          "artist": "The Beatles",
+          "duration": 243
+        },
+        {
+          "title": "Yellow",
+          "artist": "Coldplay",
+          "duration": 269
+        }
+      ]
+    },
+    {
+      "id": "popular",
+      "title": "모두가 아는 인기곡",
+      "subtitle": "Popular classics",
+      "songs": [
+        {
+          "title": "Shape of You",
+          "artist": "Ed Sheeran",
+          "duration": 234
+        },
+        {
+          "title": "Someone Like You",
+          "artist": "Adele",
+          "duration": 285
+        },
+        {
+          "title": "Blinding Lights",
+          "artist": "The Weeknd",
+          "duration": 200
+        },
+        {
+          "title": "Dynamite",
+          "artist": "BTS",
+          "duration": 199
+        },
+        {
+          "title": "Happy",
+          "artist": "Pharrell Williams",
+          "duration": 233
+        },
+        {
+          "title": "Flowers",
+          "artist": "Miley Cyrus",
+          "duration": 200
+        }
       ]
     },
     {
@@ -19,11 +76,31 @@
       "title": "슬랭 가득한 노래",
       "subtitle": "Slang-heavy songs",
       "songs": [
-        { "title": "Uptown Funk", "artist": "Mark Ronson", "duration": 270 },
-        { "title": "Espresso", "artist": "Sabrina Carpenter", "duration": 175 },
-        { "title": "Levitating", "artist": "Dua Lipa", "duration": 203 },
-        { "title": "Watermelon Sugar", "artist": "Harry Styles", "duration": 174 },
-        { "title": "Bad Guy", "artist": "Billie Eilish", "duration": 194 }
+        {
+          "title": "Uptown Funk",
+          "artist": "Mark Ronson",
+          "duration": 270
+        },
+        {
+          "title": "Espresso",
+          "artist": "Sabrina Carpenter",
+          "duration": 175
+        },
+        {
+          "title": "Levitating",
+          "artist": "Dua Lipa",
+          "duration": 203
+        },
+        {
+          "title": "Watermelon Sugar",
+          "artist": "Harry Styles",
+          "duration": 174
+        },
+        {
+          "title": "Bad Guy",
+          "artist": "Billie Eilish",
+          "duration": 194
+        }
       ]
     },
     {
@@ -31,11 +108,31 @@
       "title": "이달의 트렌딩 팝",
       "subtitle": "This month's trending pop",
       "songs": [
-        { "title": "APT.", "artist": "ROSÉ", "duration": 170 },
-        { "title": "Die With A Smile", "artist": "Lady Gaga", "duration": 252 },
-        { "title": "Birds of a Feather", "artist": "Billie Eilish", "duration": 210 },
-        { "title": "Golden", "artist": "HUNTR/X", "duration": 194 },
-        { "title": "Supernova", "artist": "aespa", "duration": 179 }
+        {
+          "title": "APT.",
+          "artist": "ROSÉ",
+          "duration": 170
+        },
+        {
+          "title": "Die With A Smile",
+          "artist": "Lady Gaga",
+          "duration": 252
+        },
+        {
+          "title": "Birds of a Feather",
+          "artist": "Billie Eilish",
+          "duration": 210
+        },
+        {
+          "title": "Golden",
+          "artist": "HUNTR/X",
+          "duration": 194
+        },
+        {
+          "title": "Supernova",
+          "artist": "aespa",
+          "duration": 179
+        }
       ]
     }
   ]

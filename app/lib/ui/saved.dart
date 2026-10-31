@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart' hide Route;
 
 import '../app/app_model.dart';
+import '../app/i18n.dart';
 import '../app/theme.dart';
 import 'components.dart';
+import 'covers.dart';
+import 'library.dart';
 
 /// FG-05 Saved (RQ-8). Signature motion #2: LP drops onto the shelf. ≤ 1.2 s, reduced-motion aware.
 class SavedView extends StatefulWidget {
@@ -53,17 +56,30 @@ class _SavedViewState extends State<SavedView> with SingleTickerProviderStateMix
               const Spacer(),
               SizedBox(height: 160, child: _shelf(song?.coverPath)),
               const SizedBox(height: 20),
-              Text('컬렉션에 추가됐어요!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: t.textPrimary)),
+              Text(tr('컬렉션에 추가됐어요!'), style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: t.textPrimary)),
               const SizedBox(height: 8),
               Text('${song?.title ?? ''} · ${song?.artist ?? ''}', style: TextStyle(fontSize: 15, color: t.textSecondary)),
               const SizedBox(height: 8),
-              Text('가사 ${model.collection.translatedCount(widget.songID, model.target.code)}줄 번역 완료',
+              Text(tr('가사 {0}줄 번역 완료', [model.collection.translatedCount(widget.songID, model.target.code)]),
                   style: TextStyle(fontSize: 12, color: t.textSecondary)),
               const SizedBox(height: 32),
-              PrimaryButton('바로 공부하기', onPressed: () => model.setPath([PlayerRoute(widget.songID)])),
+              PrimaryButton(tr('바로 공부하기'), onPressed: () => model.setPath([PlayerRoute(widget.songID)])),
               const SizedBox(height: 12),
-              SecondaryButton('라이브러리로', onPressed: () => model.setPath([])),
-              const Spacer(flex: 2),
+              SecondaryButton(tr('라이브러리로'), onPressed: () => model.setPath([])),
+              const Spacer(),
+              // Suggestions right after adding (meeting notes: "노래 추가했다고 추천").
+              if (song != null)
+                Transform.translate(
+                  offset: const Offset(-20, 0),
+                  child: SizedBox(
+                    width: MediaQuery.of(context).size.width,
+                    child: RecommendRow(
+                      title: tr('이 노래가 좋다면'),
+                      entries: model.recommendations(after: song, limit: 6),
+                      onSelect: (e) => model.setPath([SearchRoute('${e.title} ${e.artist}', e.trackKey)]),
+                    ),
+                  ),
+                ),
             ]),
           ),
         ),
@@ -88,7 +104,7 @@ class _SavedViewState extends State<SavedView> with SingleTickerProviderStateMix
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 3),
-            child: SizedBox(width: 140, height: 140, child: CoverArt(path: cover, radius: 4)),
+            child: SizedBox(width: 140, height: 140, child: cover != null ? CoverArt(path: cover, radius: 4) : GeneratedCover(seed: widget.songID, label: context.model.collection.song(widget.songID)?.title)),
           ),
         ),
         spine(),

@@ -367,11 +367,18 @@ class Language {
 
   static const korean = Language('ko', 'Korean', '한국어');
   static const english = Language('en', 'English', 'English');
+  static const chinese = Language('zh', 'Simplified Chinese', '中文');
   static const japanese = Language('ja', 'Japanese', '日本語');
+  static const german = Language('de', 'German', 'Deutsch');
+  static const french = Language('fr', 'French', 'Français');
   static const spanish = Language('es', 'Spanish', 'Español');
 
-  static const supported = [korean, english, japanese, spanish];
+  /// Translation targets offered in settings.
+  static const supported = [korean, english, chinese, japanese, german, french];
+
+  /// Languages the app interface is available in.
+  static const uiLanguages = [korean, english, chinese, japanese];
 
   static Language named(String code) =>
-      supported.firstWhere((l) => l.code == code, orElse: () => Language(code, code, code));
+      [...supported, spanish].firstWhere((l) => l.code == code, orElse: () => Language(code, code, code));
 }

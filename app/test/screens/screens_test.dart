@@ -16,6 +16,7 @@ import 'package:lyrics_translator/core/collection.dart';
 import 'package:lyrics_translator/core/llm.dart';
 import 'package:lyrics_translator/core/lyrics.dart';
 import 'package:lyrics_translator/core/models.dart';
+import 'package:lyrics_translator/core/playback.dart';
 import 'package:lyrics_translator/main.dart';
 import 'package:lyrics_translator/ui/line_detail.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -78,7 +79,7 @@ void main() {
     model.push(PlayerRoute(first.id));
     await tester.pump(const Duration(milliseconds: 500));
     await shot(tester, '03_player_study');
-    model.playDemo(first);
+    model.debugAttach(SimulatedSource(first.trackKey)..load(first.trackKey));
     await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 14500)));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));

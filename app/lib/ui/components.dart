@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../app/i18n.dart';
 import '../app/platform_services.dart';
 import '../app/theme.dart';
 import '../core/lyrics.dart';
@@ -29,7 +30,7 @@ class PrimaryButton extends StatelessWidget {
           disabledBackgroundColor: t.accent.withValues(alpha: 0.4),
           disabledForegroundColor: t.onAccent,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          textStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
         child: _labelRow(label, icon),
       ),
@@ -56,7 +57,7 @@ class SecondaryButton extends StatelessWidget {
           disabledForegroundColor: t.textPrimary.withValues(alpha: 0.4),
           side: BorderSide(color: t.textPrimary.withValues(alpha: onPressed == null ? 0.3 : 0.8)),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          textStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
         child: _labelRow(label, icon),
       ),
@@ -65,8 +66,8 @@ class SecondaryButton extends StatelessWidget {
 }
 
 Widget _labelRow(String label, IconData? icon) => icon == null
-    ? Text(label)
-    : Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 18), const SizedBox(width: 6), Flexible(child: Text(label))]);
+    ? Text(tr(label))
+    : Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 18), SizedBox(width: 6), Flexible(child: Text(tr(label)))]);
 
 // ─────────────── Vinyl record ───────────────
 
@@ -130,7 +131,7 @@ class SpinningRecord extends StatefulWidget {
 }
 
 class _SpinningRecordState extends State<SpinningRecord> with SingleTickerProviderStateMixin {
-  late final _c = AnimationController(vsync: this, duration: const Duration(seconds: 4));
+  late final _c = AnimationController(vsync: this, duration: Duration(seconds: 4));
 
   @override
   void didChangeDependencies() {
@@ -149,7 +150,7 @@ class _SpinningRecordState extends State<SpinningRecord> with SingleTickerProvid
   }
 
   @override
-  Widget build(BuildContext context) => RotationTransition(turns: _c, child: const VinylRecord(grooves: 4));
+  Widget build(BuildContext context) => RotationTransition(turns: _c, child: VinylRecord(grooves: 4));
 }
 
 // ─────────────── Cover art ───────────────
@@ -170,7 +171,7 @@ class CoverArt extends StatelessWidget {
         child: Container(
           color: t.surfaceRaised,
           child: (f != null && f.existsSync())
-              ? Image.file(f, fit: BoxFit.cover, gaplessPlayback: true, errorBuilder: (_, _, _) => const SizedBox())
+              ? Image.file(f, fit: BoxFit.cover, gaplessPlayback: true, errorBuilder: (_, _, _) => SizedBox())
               : null,
         ),
       ),
@@ -187,7 +188,7 @@ enum BadgeStatus {
   retry('재시도');
 
   final String label;
-  const BadgeStatus(this.label);
+  BadgeStatus(this.label);
 }
 
 class LPCard extends StatelessWidget {
@@ -207,7 +208,7 @@ class LPCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.theme;
     return Semantics(
-      label: '${song.title}, ${song.artist}, ${_status.label}',
+      label: '${song.title}, ${song.artist}, ${tr(_status.label)}',
       button: true,
       excludeSemantics: true,
       child: Column(
@@ -249,15 +250,15 @@ class LPCard extends StatelessWidget {
               );
             }),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: 6),
           Text(song.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(color: t.textPrimary, fontSize: 14, fontWeight: FontWeight.w500)),
-          const SizedBox(height: 2),
+          SizedBox(height: 2),
           Text(song.artist,
               maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: t.textSecondary, fontSize: 12)),
-          const SizedBox(height: 6),
+          SizedBox(height: 6),
           StatusBadge(_status),
         ],
       ),
@@ -274,14 +275,14 @@ class StatusBadge extends StatelessWidget {
     final t = context.theme;
     final conquered = status == BadgeStatus.conquered;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(color: conquered ? t.accent : t.surfaceRaised, borderRadius: BorderRadius.circular(99)),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         if (status == BadgeStatus.translating) ...[
           SizedBox(width: 9, height: 9, child: CircularProgressIndicator(strokeWidth: 1.5, color: t.textSecondary)),
-          const SizedBox(width: 4),
+          SizedBox(width: 4),
         ],
-        Text(status.label,
+        Text(tr(status.label),
             style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: conquered ? t.onAccent : t.textSecondary)),
       ]),
     );
@@ -298,12 +299,12 @@ class LyricsBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.theme;
     final label = switch (availability) {
-      Availability.synced => '싱크 가사',
-      Availability.plain => '일반 가사',
-      Availability.none => '가사 없음',
+      Availability.synced => tr('싱크 가사'),
+      Availability.plain => tr('일반 가사'),
+      Availability.none => tr('가사 없음'),
     };
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(border: Border.all(color: t.stroke), borderRadius: BorderRadius.circular(99)),
       child: Text(label,
           style: TextStyle(fontSize: 11, color: availability == Availability.none ? t.textTertiary : t.textSecondary)),
@@ -321,15 +322,15 @@ class EngineBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.theme;
     return Semantics(
-      label: '번역 엔진: $label',
+      label: tr('번역 엔진: {0}', [label]),
       excludeSemantics: true,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(color: t.surfaceRaised, borderRadius: BorderRadius.circular(99)),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(label.startsWith('On-device') ? Icons.smartphone : Icons.cloud_outlined, size: 12, color: t.textSecondary),
-          const SizedBox(width: 4),
-          Text(label, style: TextStyle(fontSize: 11, color: t.textSecondary)),
+          SizedBox(width: 4),
+          Text(tr(label), style: TextStyle(fontSize: 11, color: t.textSecondary)),
         ]),
       ),
     );
@@ -346,7 +347,7 @@ class SkeletonLines extends StatefulWidget {
 }
 
 class _SkeletonLinesState extends State<SkeletonLines> with SingleTickerProviderStateMixin {
-  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 800), lowerBound: 0.5)
+  late final _c = AnimationController(vsync: this, duration: Duration(milliseconds: 800), lowerBound: 0.5)
     ..repeat(reverse: true);
 
   @override
@@ -359,7 +360,7 @@ class _SkeletonLinesState extends State<SkeletonLines> with SingleTickerProvider
   Widget build(BuildContext context) {
     final t = context.theme;
     return Semantics(
-      label: '해설을 불러오는 중',
+      label: tr('해설을 불러오는 중'),
       child: FadeTransition(
         opacity: _c,
         child: Column(
@@ -367,7 +368,7 @@ class _SkeletonLinesState extends State<SkeletonLines> with SingleTickerProvider
           children: [
             for (var i = 0; i < widget.count; i++)
               Padding(
-                padding: const EdgeInsets.only(bottom: 10),
+                padding: EdgeInsets.only(bottom: 10),
                 child: Container(
                   height: 14,
                   width: i == widget.count - 1 ? 180 : double.infinity,
@@ -387,7 +388,7 @@ class SectionLabel extends StatelessWidget {
   final String text;
   const SectionLabel(this.text, {super.key});
   @override
-  Widget build(BuildContext context) => Text(text, style: TextStyle(fontSize: 13, color: context.theme.textSecondary));
+  Widget build(BuildContext context) => Text(tr(text), style: TextStyle(fontSize: 13, color: context.theme.textSecondary));
 }
 
 /// ONRQ-6: non-blocking, states cause and the one fixing action.
@@ -404,23 +405,23 @@ class BannerView extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16),
-        padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
+        margin: EdgeInsets.symmetric(horizontal: 16),
+        padding: EdgeInsets.fromLTRB(14, 6, 6, 6),
         decoration: BoxDecoration(
           color: t.surfaceRaised,
           borderRadius: BorderRadius.circular(12),
-          boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 12)],
+          boxShadow: [BoxShadow(color: Colors.black38, blurRadius: 12)],
         ),
         child: Row(children: [
           Icon(Icons.error_outline, size: 20, color: t.textPrimary),
-          const SizedBox(width: 12),
-          Expanded(child: Text(message, style: TextStyle(fontSize: 13, color: t.textPrimary))),
+          SizedBox(width: 12),
+          Expanded(child: Text(tr(message), style: TextStyle(fontSize: 13, color: t.textPrimary))),
           if (actionTitle != null && action != null)
             TextButton(
                 onPressed: action,
                 child: Text(actionTitle!, style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w600))),
           IconButton(
-              onPressed: dismiss, icon: Icon(Icons.close, size: 18, color: t.textPrimary), tooltip: '닫기'),
+              onPressed: dismiss, icon: Icon(Icons.close, size: 18, color: t.textPrimary), tooltip: tr('닫기')),
         ]),
       ),
     );
@@ -459,12 +460,12 @@ class OutlinedField extends StatelessWidget {
       autocorrect: false,
       style: style ?? TextStyle(color: t.textPrimary, fontSize: 16),
       decoration: InputDecoration(
-        hintText: hint,
+        hintText: tr(hint),
         hintMaxLines: 3,
         hintStyle: TextStyle(color: t.textTertiary, fontSize: 14),
         enabledBorder: border,
         focusedBorder: border.copyWith(borderSide: BorderSide(color: t.textSecondary)),
-        contentPadding: const EdgeInsets.all(14),
+        contentPadding: EdgeInsets.all(14),
       ),
     );
   }
@@ -484,28 +485,29 @@ Future<T?> showActionSheet<T>(BuildContext context,
   final t = context.theme;
   return showModalBottomSheet<T>(
     context: context,
+    useRootNavigator: true,
     backgroundColor: t.surface,
     showDragHandle: true,
     builder: (ctx) => SafeArea(
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (title != null)
           Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 4),
-            child: Text(title, textAlign: TextAlign.center, style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w600)),
+            padding: EdgeInsets.fromLTRB(24, 0, 24, 4),
+            child: Text(tr(title), textAlign: TextAlign.center, style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w600)),
           ),
         if (message != null)
           Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-            child: Text(message, textAlign: TextAlign.center, style: TextStyle(color: t.textSecondary, fontSize: 13)),
+            padding: EdgeInsets.fromLTRB(24, 0, 24, 8),
+            child: Text(tr(message), textAlign: TextAlign.center, style: TextStyle(color: t.textSecondary, fontSize: 13)),
           ),
         for (final a in actions)
           ListTile(
-            leading: a.icon == null ? null : Icon(a.icon, color: a.destructive ? const Color(0xFFE57373) : t.textPrimary),
-            title: Text(a.label, style: TextStyle(color: a.destructive ? const Color(0xFFE57373) : t.textPrimary)),
+            leading: a.icon == null ? null : Icon(a.icon, color: a.destructive ? Color(0xFFE57373) : t.textPrimary),
+            title: Text(tr(a.label), style: TextStyle(color: a.destructive ? Color(0xFFE57373) : t.textPrimary)),
             enabled: a.enabled,
             onTap: () => Navigator.pop(ctx, a.value),
           ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
       ]),
     ),
   );
@@ -526,13 +528,13 @@ Future<bool> confirmDialog(BuildContext context,
   final r = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: Text(title, style: TextStyle(color: t.textPrimary, fontSize: 18)),
-      content: message == null ? null : Text(message, style: TextStyle(color: t.textSecondary)),
+      title: Text(tr(title), style: TextStyle(color: t.textPrimary, fontSize: 18)),
+      content: message == null ? null : Text(tr(message), style: TextStyle(color: t.textSecondary)),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(cancel, style: TextStyle(color: t.textSecondary))),
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr(cancel), style: TextStyle(color: t.textSecondary))),
         TextButton(
           onPressed: () => Navigator.pop(ctx, true),
-          child: Text(confirm,
+          child: Text(tr(confirm),
               style: TextStyle(color: destructive ? const Color(0xFFE57373) : t.textPrimary, fontWeight: FontWeight.w600)),
         ),
       ],
@@ -544,5 +546,5 @@ Future<bool> confirmDialog(BuildContext context,
 void showMessage(BuildContext context, String message) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(message)));
+    ..showSnackBar(SnackBar(content: Text(tr(message))));
 }

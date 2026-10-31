@@ -122,7 +122,17 @@ class TrackNormalizer {
   static final _alnum = RegExp(r'[\p{L}\p{N}\p{M}]', unicode: true);
 
   /// Lowercases, strips bracketed tags, "feat." clauses, noise words, and punctuation.
+  static final _normalized = <String, String>{};
+
+  /// Memoised: the matcher runs on every rebuild with the same few titles and artists.
   static String normalize(String s) {
+    final hit = _normalized[s];
+    if (hit != null) return hit;
+    if (_normalized.length > 4000) _normalized.clear();
+    return _normalized[s] = _normalize(s);
+  }
+
+  static String _normalize(String s) {
     var t = s.toLowerCase();
     t = t.replaceAll(RegExp(r'[\(\[\{][^\)\]\}]*[\)\]\}]'), ' ');
     t = t.replaceAll(RegExp(r'\b(feat\.?|ft\.?|featuring)\s.*$'), ' ');
@@ -136,6 +146,13 @@ class TrackNormalizer {
     }
     return buf.toString().split(' ').where((w) => w.isNotEmpty).join(' ');
   }
+
+  /// The title as LRCLIB usually stores it: without "(feat. …)", "[Live]" or " - Remastered 2011".
+  static String cleanTitle(String title) => title
+      .replaceAll(RegExp(r'\s*[\(\[][^\)\]]*[\)\]]'), '')
+      .replaceAll(RegExp(r'\s+-\s+.*$'), '')
+      .replaceAll(RegExp(r'\s+(feat\.?|ft\.?|featuring)\s.*$', caseSensitive: false), '')
+      .trim();
 
   /// "Coldplay/Coldplay", "A, B & C" → first artist (SIR-7).
   static String primaryArtist(String artist) => artist.split(RegExp(r'[/,&;]')).first.trim();
@@ -254,7 +271,7 @@ abstract class LyricsProvider {
   Future<LyricsCandidate?> lyrics(TrackKey track);
 }
 
-enum LyricsErrorKind { offline, http, decoding }
+enum LyricsErrorKind { offline, busy, http, decoding }
 
 class LyricsError implements Exception {
   final LyricsErrorKind kind;
@@ -269,11 +286,20 @@ class LRCLIBClient implements LyricsProvider {
   final http.Client _client;
   final Uri baseURL;
   final String userAgent;
+  final Future<void> Function(Duration) _sleep;
   final _cache = <String, List<LyricsCandidate>>{};
 
-  LRCLIBClient({http.Client? client, Uri? baseURL, this.userAgent = 'LyricsTranslator/0.1 (https://github.com/team9/lyricstranslator)'})
-      : _client = client ?? http.Client(),
-        baseURL = baseURL ?? Uri.parse('https://lrclib.net/api');
+  /// LRCLIB often answers 503 "ServerOverloaded" (Retry-After: 1) on /search while /get still works.
+  static const maxAttempts = 6;
+
+  LRCLIBClient({
+    http.Client? client,
+    Uri? baseURL,
+    this.userAgent = 'Vynilo/0.8 (lyrics study app)',
+    Future<void> Function(Duration)? sleep,
+  })  : _client = client ?? http.Client(),
+        baseURL = baseURL ?? Uri.parse('https://lrclib.net/api'),
+        _sleep = sleep ?? Future<void>.delayed;
 
   @override
   Future<List<LyricsCandidate>> search(String query) async {
@@ -287,29 +313,50 @@ class LRCLIBClient implements LyricsProvider {
     return results;
   }
 
+  /// Exact lookup with `/get`. Music apps name things differently from LRCLIB (album titles,
+  /// "(feat. …)", "- Remastered"), so a miss is retried without the album, then with the title
+  /// cleaned up.
   @override
   Future<LyricsCandidate?> lyrics(TrackKey track) async {
-    final q = <String, String>{
-      'track_name': track.title,
-      'artist_name': TrackNormalizer.primaryArtist(track.artist),
-      if (track.album != null) 'album_name': track.album!,
-      if (track.duration != null) 'duration': '${track.duration!.round()}',
-    };
-    try {
-      final body = await _get(baseURL.replace(path: '${baseURL.path}/get', queryParameters: q));
-      return LyricsCandidate.fromJson(Map<String, dynamic>.from(body as Map));
-    } on LyricsError catch (e) {
-      if (e.kind == LyricsErrorKind.http && e.status == 404) return null;
-      rethrow;
+    final artist = TrackNormalizer.primaryArtist(track.artist);
+    final duration = track.duration == null ? null : '${track.duration!.round()}';
+    final cleanTitle = TrackNormalizer.cleanTitle(track.title);
+    final variants = <Map<String, String>>[
+      {'track_name': track.title, 'artist_name': artist, if (track.album != null) 'album_name': track.album!, 'duration': ?duration},
+      if (track.album != null) {'track_name': track.title, 'artist_name': artist, 'duration': ?duration},
+      if (cleanTitle != track.title && cleanTitle.isNotEmpty) {'track_name': cleanTitle, 'artist_name': artist, 'duration': ?duration},
+    ];
+    for (final q in variants) {
+      try {
+        final body = await _get(baseURL.replace(path: '${baseURL.path}/get', queryParameters: q));
+        return LyricsCandidate.fromJson(Map<String, dynamic>.from(body as Map));
+      } on LyricsError catch (e) {
+        if (e.kind == LyricsErrorKind.http && e.status == 404) continue;
+        rethrow;
+      }
     }
+    return null;
   }
 
+  /// GET with retries: 503/429 wait for Retry-After (growing a little each time); a network
+  /// failure is retried once.
   Future<Object?> _get(Uri url) async {
-    http.Response r;
-    try {
-      r = await _client.get(url, headers: {'User-Agent': userAgent}).timeout(const Duration(seconds: 10));
-    } catch (_) {
-      throw const LyricsError(LyricsErrorKind.offline);
+    late http.Response r;
+    for (var attempt = 1;; attempt++) {
+      try {
+        r = await _client.get(url, headers: {'User-Agent': userAgent}).timeout(const Duration(seconds: 15));
+      } catch (_) {
+        if (attempt < 2) {
+          await _sleep(const Duration(seconds: 1));
+          continue;
+        }
+        throw const LyricsError(LyricsErrorKind.offline);
+      }
+      final busy = r.statusCode == 503 || r.statusCode == 429;
+      if (!busy) break;
+      if (attempt >= maxAttempts) throw LyricsError(LyricsErrorKind.busy, r.statusCode);
+      final after = double.tryParse(r.headers['retry-after'] ?? '') ?? 1;
+      await _sleep(Duration(milliseconds: (after * 1000 * (1 + 0.5 * (attempt - 1))).round().clamp(500, 5000)));
     }
     if (r.statusCode < 200 || r.statusCode >= 300) throw LyricsError(LyricsErrorKind.http, r.statusCode);
     try {
@@ -348,9 +395,9 @@ class StaticLyricsProvider implements LyricsProvider {
 class DemoAwareLyricsProvider implements LyricsProvider {
   final LyricsProvider remote;
   final LyricsProvider demo;
-  DemoAwareLyricsProvider({LyricsProvider? remote})
+  DemoAwareLyricsProvider({LyricsProvider? remote, bool includeDemo = true})
       : remote = remote ?? LRCLIBClient(),
-        demo = StaticLyricsProvider(DemoContent.candidates);
+        demo = StaticLyricsProvider(includeDemo ? DemoContent.candidates : const []);
 
   @override
   Future<List<LyricsCandidate>> search(String query) async {

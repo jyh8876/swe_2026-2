@@ -3,16 +3,22 @@ import 'dart:async';
 import 'package:flutter/material.dart' hide Route;
 
 import '../app/app_model.dart';
+import '../app/i18n.dart';
 import '../app/theme.dart';
 import '../core/lyrics.dart';
+import '../core/models.dart';
 import '../core/playback.dart';
+import '../core/recommend.dart';
 import 'components.dart';
+import 'covers.dart';
 import 'library.dart';
+import 'spotify_library.dart';
 
 /// FG-02 Song search (RQ-5, ONRQ-1, ONRQ-11, RQ-17).
 class SearchView extends StatefulWidget {
   final String initialQuery;
-  const SearchView({super.key, required this.initialQuery});
+  final TrackKey? hint;
+  const SearchView({super.key, required this.initialQuery, this.hint});
   @override
   State<SearchView> createState() => _SearchViewState();
 }
@@ -53,7 +59,7 @@ class _SearchViewState extends State<SearchView> {
   void _schedule() {
     _debounce?.cancel();
     // Debounce typing.
-    _debounce = Timer(const Duration(milliseconds: 350), _search);
+    _debounce = Timer(const Duration(milliseconds: 600), _search);
   }
 
   Future<void> _search() async {
@@ -64,15 +70,27 @@ class _SearchViewState extends State<SearchView> {
       return;
     }
     setState(() => isLoading = true);
+    final provider = context.readModel.lyricsProvider;
     try {
-      final found = await context.readModel.lyricsProvider.search(q);
+      // A known track (recommendation, now playing) is also fetched exactly, so it still shows up
+      // when LRCLIB's search is overloaded.
+      final hint = widget.hint;
+      final exactFuture = hint != null && q == widget.initialQuery.trim()
+          ? provider.lyrics(hint).then<LyricsCandidate?>((c) => c, onError: (_) => null)
+          : Future<LyricsCandidate?>.value(null);
+      List<LyricsCandidate> found;
+      try {
+        found = await provider.search(q);
+      } on LyricsError {
+        final exact = await exactFuture;
+        if (exact == null) rethrow;
+        found = [];
+      }
+      final exact = await exactFuture;
       if (!mounted || gen != _generation) return;
       setState(() {
-        // Instrumental results with no lyrics go last.
-        results = [
-          ...found.where((c) => !c.instrumental || c.hasSynced || c.hasPlain),
-          ...found.where((c) => c.instrumental && !c.hasSynced && !c.hasPlain),
-        ];
+        // One row per song, best lyrics first, at most 20 rows.
+        results = SearchResults.dedupe([?exact, ...found]);
         error = null;
       });
     } on LyricsError catch (e) {
@@ -97,7 +115,7 @@ class _SearchViewState extends State<SearchView> {
     final t = context.theme;
     final spotifyLinked = model.settings.connectedSources.contains(SourceID.spotify);
     return Scaffold(
-      appBar: AppBar(title: const Text('노래 검색')),
+      appBar: AppBar(title: Text(tr('노래 검색'))),
       body: SafeArea(
         top: false,
         child: Column(children: [
@@ -115,12 +133,12 @@ class _SearchViewState extends State<SearchView> {
                 decoration: InputDecoration(
                   border: InputBorder.none,
                   prefixIcon: Icon(Icons.search, color: t.textSecondary),
-                  hintText: '제목, 아티스트 검색',
+                  hintText: tr('제목, 아티스트 검색'),
                   hintStyle: TextStyle(color: t.textTertiary),
                   suffixIcon: _query.text.isEmpty
                       ? null
                       : IconButton(
-                          tooltip: '지우기',
+                          tooltip: tr('지우기'),
                           icon: Icon(Icons.cancel, color: t.textTertiary, size: 20),
                           onPressed: () => _setQuery('')),
                   contentPadding: const EdgeInsets.symmetric(vertical: 14),
@@ -129,18 +147,18 @@ class _SearchViewState extends State<SearchView> {
             ),
           ),
           // Users without Spotify see no empty playlist tab (FG-02 note).
-          if (spotifyLinked)
+          if (spotifyLinked || model.spotifyAuth.isConfigured)
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
               child: Row(children: [
-                _tabButton('검색', _SearchTab.search),
-                _tabButton('내 스포티파이 플레이리스트', _SearchTab.spotify),
+                _tabButton(tr('검색'), _SearchTab.search),
+                _tabButton(tr('내 Spotify'), _SearchTab.spotify),
               ]),
             ),
           Expanded(child: _content()),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-            child: SecondaryButton('직접 추가하기', icon: Icons.add, onPressed: () => model.push(AddRoute(AddSongDraft()))),
+            child: SecondaryButton(tr('직접 추가하기'), icon: Icons.add, onPressed: () => model.push(AddRoute(AddSongDraft()))),
           ),
         ]),
       ),
@@ -171,8 +189,9 @@ class _SearchViewState extends State<SearchView> {
     final t = context.theme;
     if (tab == _SearchTab.spotify) return _spotifyPlaylists();
     if (_query.text.trim().isEmpty) {
+      // Suggestions before searching: easy songs, popular songs and more.
       return SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.only(top: 8, bottom: 20),
         child: CuratedShelvesView(shelves: model.shelves, onSelect: (e, _) => _setQuery('${e.title} ${e.artist}')),
       );
     }
@@ -185,38 +204,8 @@ class _SearchViewState extends State<SearchView> {
     );
   }
 
-  /// Mock "my playlists" (built from the curated shelves) until the Spotify Web API is wired.
-  Widget _spotifyPlaylists() {
-    final model = context.model;
-    final t = context.theme;
-    return ListView(padding: const EdgeInsets.symmetric(vertical: 8), children: [
-      for (final shelf in model.shelves) ...[
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
-          child: Text(shelf.title, style: TextStyle(fontSize: 13, color: t.textSecondary)),
-        ),
-        for (final e in shelf.songs)
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-            onTap: () {
-              _setQuery('${e.title} ${e.artist}');
-              setState(() => tab = _SearchTab.search);
-            },
-            leading: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(color: t.surface, borderRadius: BorderRadius.circular(6)),
-              child: Icon(Icons.music_note, color: t.textTertiary),
-            ),
-            title: Text(e.title, maxLines: 1, style: TextStyle(fontSize: 14, color: t.textPrimary)),
-            subtitle: Text(e.artist, maxLines: 1, style: TextStyle(fontSize: 12, color: t.textSecondary)),
-            trailing: model.collection.existingSong(e.trackKey) != null
-                ? Icon(Icons.check_circle, color: t.accent, semanticLabel: '이미 추가됨')
-                : null,
-          ),
-      ],
-    ]);
-  }
+  /// The user's Spotify playlists, saved albums and liked songs, with cover art.
+  Widget _spotifyPlaylists() => const SpotifyLibraryPanel();
 
   Widget _noResults() {
     final t = context.theme;
@@ -227,18 +216,28 @@ class _SearchViewState extends State<SearchView> {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Icon(offline ? Icons.wifi_off : Icons.music_note, size: 40, color: t.textTertiary),
           const SizedBox(height: 12),
-          Text(offline ? '오프라인' : '가사를 찾지 못했어요',
+          Text(offline ? tr('오프라인') : tr('가사를 찾지 못했어요'),
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: t.textPrimary)),
           const SizedBox(height: 12),
           Text(
             offline
-                ? '검색하려면 인터넷 연결이 필요해요. 가사를 붙여넣어 직접 추가할 수는 있어요.'
+                ? tr('검색하려면 인터넷 연결이 필요해요. 가사를 붙여넣어 직접 추가할 수는 있어요.')
                 : error == null
-                    ? '영어 제목이나 원래 언어의 제목으로 다시 검색해 보세요.\n또는 가사를 붙여넣어 직접 추가할 수 있어요.'
-                    : '가사 서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.',
+                    ? tr('영어 제목이나 원래 언어의 제목으로 다시 검색해 보세요.\n또는 가사를 붙여넣어 직접 추가할 수 있어요.')
+                    : error!.kind == LyricsErrorKind.busy
+                        ? tr('가사 서버(LRCLIB)가 지금 붐벼요. 몇 초 뒤에 다시 시도해 주세요.')
+                        : tr('가사 서버에 연결하지 못했어요 ({0}). 잠시 후 다시 시도해 주세요.', [error!.status ?? error!.kind.name]),
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 14, color: t.textSecondary),
           ),
+          if (error != null) ...[
+            const SizedBox(height: 16),
+            TextButton.icon(
+              onPressed: _search,
+              icon: Icon(Icons.refresh, color: t.textPrimary),
+              label: Text(tr('다시 시도'), style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w600)),
+            ),
+          ],
         ]),
       ),
     );
@@ -251,7 +250,7 @@ class _SearchViewState extends State<SearchView> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         child: Row(children: [
-          Container(width: 48, height: 48, decoration: BoxDecoration(color: t.surface, borderRadius: BorderRadius.circular(6))),
+          SizedBox(width: 48, height: 48, child: GeneratedCover(seed: '${c.artistName}—${c.trackName}', radius: 4)),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

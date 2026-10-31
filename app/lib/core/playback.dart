@@ -17,7 +17,10 @@ class PlaybackSnapshot {
   final double rate;
   final bool isPlaying;
 
-  PlaybackSnapshot({required this.track, required this.position, DateTime? reportedAt, this.rate = 1, required this.isPlaying})
+  /// The music app's own track id (Spotify), when it has one.
+  final String? trackID;
+
+  PlaybackSnapshot({required this.track, required this.position, DateTime? reportedAt, this.rate = 1, required this.isPlaying, this.trackID})
       : reportedAt = reportedAt ?? DateTime.now();
 }
 
