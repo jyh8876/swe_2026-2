@@ -1,32 +1,33 @@
-# swe_2026-2: DAY-OFF (LyricsTranslator)
+# swe_2026-2: Vynilo (formerly DAY-OFF / LyricsTranslator)
 
-Learn a language with the songs you already listen to. The app shows synced lyrics line by line with a natural translation under each line, explains slang and idioms on tap, and keeps studied songs as an LP collection.
+Learn a language with the songs you already listen to. You log in with Spotify and add songs; Vynilo translates the lyrics line by line with an LLM. Songs play through the Spotify app while the current line follows the music. Tap a line to jump there, open an explanation of slang and idioms, save lines, and take lyric quizzes.
 
-This is the 2026-2 Software Engineering team project.
+This is the 2026-2 Software Engineering team project. The app was called DAY-OFF up to version 0.7.0.
 
 ## Repository layout
 
 | Path | What it is | Build on |
 |---|---|---|
-| [`app/`](app/) | **Cross-platform app (Flutter)**, one codebase for Android and iOS. The UI follows the [UI prototype](https://github.com/jyh8876/swe-2026_2_UI/commit/898667e687cc962b3ce14737baed32f0673bf61d) (light home with album carousel/grid, dark player, white explanation sheet). | Linux / macOS / Windows (APK); macOS + Xcode (iOS) |
+| [`app/`](app/) | **Vynilo app (Flutter)**, Android package `com.vynilo.lyrics`. See [`app/README.md`](app/README.md). | Linux / macOS / Windows (Android APK) |
 | [`ios/`](ios/) | Native SwiftUI prototype with the `LyricsCore` Swift package. Reference implementation of SSRD v1.2. | macOS + Xcode |
-| [`docs/ssad_diagrams/`](docs/ssad_diagrams/) | PlantUML sources for the SSAD figures (components, states, use cases, sequences, deployment) | any PlantUML |
+| [`docs/ssad_diagrams/`](docs/ssad_diagrams/) | PlantUML sources for the SSAD figures | any PlantUML |
 
-`app/lib/core` is a 1:1 port of `ios/Packages/LyricsCore`, so both apps follow the same business rules and the same export file format (RQ-18). A collection exported on an iPhone can be imported on Android, and the other way round.
+`app/lib/core` started as a port of `ios/Packages/LyricsCore`. The collection export format is still shared (RQ-18): a collection exported on one platform imports on the other.
 
-## Quick start
+## Quick start (Android)
 
 ```bash
-# Android APK
 cd app
-flutter test                                  # core unit tests
-flutter build apk --release --split-per-abi   # → build/app/outputs/flutter-apk/
-
-# iOS (Mac with Xcode)
-cd app && flutter build ios                   # Flutter app
-open ios/LyricsTranslator.xcodeproj           # or the native SwiftUI prototype
+flutter test test/core_test.dart test/engines_test.dart test/features_test.dart test/spotify_test.dart \
+  test/spotify_remote_test.dart test/streaming_test.dart test/i18n_test.dart test/performance_test.dart
+flutter build apk --release --target-platform android-arm64 --dart-define=SPOTIFY_CLIENT_ID=<your client id>
 ```
 
-Try it without any account: **노래 추가** → search `day off` → **저장** → open the LP → press play. The bundled demo song has original lyrics written for this project, and it works offline.
+**Requirements to run the app**
+- A Spotify app registered in the Spotify Developer Dashboard with:
+  - the redirect URI `vynilo://spotify-callback`
+  - the Android package `com.vynilo.lyrics` and your signing certificate's SHA-1
+- On the phone, the Spotify app logged in with a Premium account. In Development mode, that account must be listed under User Management.
+- A translation engine, chosen in the app: the on-device model (downloaded in the app), the Vynilo server, an OpenAI-compatible LLM gateway, Claude or Gemini.
 
-Planning documents (SSRD, SSAD, PLAN) are shared on Notion/Drive and are git-ignored on purpose.
+Planning documents (SSRD, SSAD, PLAN) are shared on Notion/Drive.
