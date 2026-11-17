@@ -4,6 +4,21 @@
 <dict>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>앨범 커버로 쓸 사진을 고를 때 필요해요. 사진은 기기에만 저장돼요.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Vinylo uses Apple Music to play the songs you're studying.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.vinylo.ios</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>vynilo</string>
+			</array>
+		</dict>
+	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
@@ -17,7 +32,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>lyrics_translator</string>
+	<string>Vinylo</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
