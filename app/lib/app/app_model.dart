@@ -16,6 +16,7 @@ import '../core/models.dart';
 import '../core/playback.dart';
 import '../core/quiz.dart';
 import '../core/recommend.dart';
+import 'google_auth.dart';
 import 'i18n.dart';
 import 'platform_services.dart';
 import 'spotify_library.dart';
@@ -115,6 +116,9 @@ class AppSettings {
   bool cloudNoticeAccepted = false;
   Set<SourceID> connectedSources = {};
 
+  /// Google account chosen on sign-in (profile only; null when signed out).
+  GoogleAccountInfo? googleAccount;
+
   // Engine settings that are not secrets (keys live in the SecureStore).
   String vyniloURL = VyniloServerEngine.defaultURL;
   String vyniloModel = '';
@@ -141,6 +145,7 @@ class AppSettings {
         'showTranslation': showTranslation,
         'cloudNoticeAccepted': cloudNoticeAccepted,
         'connectedSources': connectedSources.map((s) => s.name).toList(),
+        'googleAccount': googleAccount?.toJson(),
         'vyniloURL': vyniloURL,
         'vyniloModel': vyniloModel,
         'gatewayURL': gatewayURL,
@@ -162,6 +167,7 @@ class AppSettings {
         .map((n) => SourceID.values.where((s) => s.name == n).firstOrNull)
         .whereType<SourceID>()
         .toSet();
+    s.googleAccount = GoogleAccountInfo.fromJson(j['googleAccount']);
     s.vyniloURL = j['vyniloURL'] as String? ?? VyniloServerEngine.defaultURL;
     s.vyniloModel = j['vyniloModel'] as String? ?? '';
     s.gatewayURL = j['gatewayURL'] as String? ?? '';
@@ -614,6 +620,21 @@ class AppModel extends ChangeNotifier {
 
   /// The user connected Spotify (optional since 0.11.0): songs then start in the Spotify app.
   bool get spotifyConnected => settings.connectedSources.contains(SourceID.spotify);
+
+  /// The Google row is offered only in builds that have the client IDs.
+  bool get googleAvailable => GoogleAuth.isConfigured;
+  GoogleAccountInfo? get googleAccount => settings.googleAccount;
+
+  /// Throws [GoogleSignInException] on failure; a cancelled sign-in changes nothing.
+  Future<void> signInGoogle() async {
+    final account = await GoogleAuth.signIn();
+    if (account != null) updateSettings((s) => s.googleAccount = account);
+  }
+
+  Future<void> signOutGoogle() async {
+    await GoogleAuth.signOut();
+    updateSettings((s) => s.googleAccount = null);
+  }
 
   /// Opens the Spotify login (PKCE) or, when already logged in, connects to the Spotify app.
   Future<void> connect(SourceID id) async {

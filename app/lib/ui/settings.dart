@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -179,6 +180,24 @@ class _SettingsViewState extends State<SettingsView> {
                   style: TextStyle(fontSize: 12, color: t.textTertiary)),
             ),
           ]),
+        if (model.googleAvailable || model.googleAccount != null)
+          _section(tr('계정'), [
+            ListTile(
+              leading: Icon(Icons.account_circle_outlined, color: t.textPrimary, size: 28),
+              title: Text(tr('Google 계정'), style: TextStyle(color: t.textPrimary)),
+              subtitle: Text(model.googleAccount?.email ?? tr('선택 사항 · 계정 정보만 이 기기에 저장해요'),
+                  style: TextStyle(fontSize: 12, color: t.textTertiary)),
+              trailing: model.googleAccount != null
+                  ? TextButton(
+                      onPressed: () => _signOutGoogle(model),
+                      child: Text(tr('로그아웃'), style: TextStyle(color: t.textSecondary)),
+                    )
+                  : TextButton(
+                      onPressed: () => _signInGoogle(model),
+                      child: Text(tr('로그인'), style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w600)),
+                    ),
+            ),
+          ]),
         _section('Spotify', [
           ListTile(
             leading: Image.asset('assets/brand/spotify_icon_green.png', width: 28, height: 28),
@@ -351,6 +370,20 @@ class _SettingsViewState extends State<SettingsView> {
     if (!hasKey) return tr('설정 필요');
     if (s.engine == EngineKind.vynilo) return s.vyniloModel.isEmpty ? tr('서버 기본 모델') : s.vyniloModel;
     return s.gatewayModel.isEmpty ? tr('모델 선택 필요') : s.gatewayModel;
+  }
+
+  Future<void> _signInGoogle(AppModel model) async {
+    try {
+      await model.signInGoogle();
+    } on GoogleSignInException catch (e) {
+      if (mounted) showMessage(context, tr('Google 로그인에 실패했어요: {0}', [e.description ?? e.code.name]));
+    }
+  }
+
+  Future<void> _signOutGoogle(AppModel model) async {
+    final ok = await confirmDialog(context,
+        title: tr('Google 계정에서 로그아웃할까요?'), message: tr('이 기기에서 계정 정보를 지워요. Google 계정 자체는 그대로예요.'), confirm: tr('로그아웃'), destructive: true);
+    if (ok) await model.signOutGoogle();
   }
 
   Future<void> _logout(AppModel model) async {
