@@ -38,11 +38,6 @@ android {
         // minSdk 33 or lower for their Android 13/14 devices), target Android 16 (API 36).
         minSdk = 24
         targetSdk = 36
-        // 64-bit only. Some plugins ship 32-bit libraries, but Flutter's engine is built for these
-        // two only; an armeabi-v7a split would install on 32-bit phones and crash at launch.
-        ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
-        }
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
         // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
@@ -88,8 +83,14 @@ android {
         }
     }
 
+    // 64-bit only. Some plugins ship 32-bit libraries, but Flutter's engine is built for arm64 and
+    // x86_64 only; an armeabi-v7a split would install on 32-bit phones and crash at launch.
+    // (Flutter's plugin overrides ndk.abiFilters, so the 32-bit folders are left out here.)
     packaging {
-        jniLibs { useLegacyPackaging = true }
+        jniLibs {
+            useLegacyPackaging = true
+            excludes += listOf("lib/armeabi-v7a/**", "lib/armeabi/**", "lib/x86/**")
+        }
     }
 
     signingConfigs {
