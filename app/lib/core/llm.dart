@@ -130,8 +130,8 @@ Future<T> withBackoff<T>(Future<T> Function() op, {int attempts = 3, double base
 /// Prompt templates. Versioned: translations and explanations are keyed by prompt version,
 /// so changing a prompt never overwrites earlier results (A.III data model).
 class Prompts {
-  /// p2 adds the reading ("r") of each translated line.
-  static const version = 'p2';
+  /// p2 adds the reading ("r") of each translated line; p3 softens profanity.
+  static const version = 'p3';
 
   /// The script a reader of [target] uses to read how a foreign line sounds (독음).
   static String readingScript(Language target) => switch (target.code) {
@@ -149,7 +149,7 @@ Rules:
 - Return exactly one entry per input index. Never merge or split lines.
 - If a line is already in ${target.englishName}, return it with "copy": true and no translation.
 - For every translated line also give "r": how the ORIGINAL line sounds when sung, written in ${readingScript(target)}. Transcribe the sound only; do not translate it. Leave "r" out when the original is already written in that script.
-- Do not censor the original meaning.
+- Profanity, slurs and crude sexual words: keep what the line means and how strong the feeling is, but write it in milder words a general audience can read (e.g. "fucking" used as an intensifier → "really"; a slur → a neutral word for the person). Never use asterisks or blanks; never leave a line untranslated because of its words.
 Respond only with JSON: {"lines":[{"i":0,"t":"...","r":"..."},{"i":1,"copy":true}]}''';
 
   static String translationUser(List<LyricLine> lines) => lines.map((l) => '${l.index}\t${l.text}').join('\n');
@@ -158,6 +158,7 @@ Respond only with JSON: {"lines":[{"i":0,"t":"...","r":"..."},{"i":1,"copy":true
       '''You explain one line of song lyrics to a learner whose native language is ${target.englishName}.
 Write every field in ${target.englishName}. Quote original expressions as they appear in the lyric.
 Pick at most 3 key expressions, ranked by learning value (slang and idioms first).
+When an expression is profane or a slur, say so plainly and give a mild equivalent; do not repeat it in the example sentence.
 Respond only with JSON:
 {"expressions":[{"phrase":"...","meaning":"..."}],"structure":"one line","usage":"when to use it","example":"an example sentence"}''';
 
