@@ -112,6 +112,9 @@ class AppSettings {
   String uiLanguage = Language.korean.code;
   bool showTranslation = true;
 
+  /// 독음 above each original line, when the translation has one.
+  bool showReading = true;
+
   /// One-time notice before the first cloud translation (SIR-3).
   bool cloudNoticeAccepted = false;
   Set<SourceID> connectedSources = {};
@@ -143,6 +146,7 @@ class AppSettings {
         'targetLanguage': targetLanguage,
         'uiLanguage': uiLanguage,
         'showTranslation': showTranslation,
+        'showReading': showReading,
         'cloudNoticeAccepted': cloudNoticeAccepted,
         'connectedSources': connectedSources.map((s) => s.name).toList(),
         'googleAccount': googleAccount?.toJson(),
@@ -162,6 +166,7 @@ class AppSettings {
     s.targetLanguage = j['targetLanguage'] as String? ?? Language.korean.code;
     s.uiLanguage = j['uiLanguage'] as String? ?? Language.korean.code;
     s.showTranslation = j['showTranslation'] != false;
+    s.showReading = j['showReading'] != false;
     s.cloudNoticeAccepted = j['cloudNoticeAccepted'] == true;
     s.connectedSources = ((j['connectedSources'] as List?) ?? const [])
         .map((n) => SourceID.values.where((s) => s.name == n).firstOrNull)

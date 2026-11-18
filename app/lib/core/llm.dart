@@ -39,7 +39,10 @@ sealed class LineResult {
 
 class Translated extends LineResult {
   final String text;
-  const Translated(super.index, this.text);
+
+  /// 독음 of the original line in the reader's script, when the engine gives one.
+  final String? reading;
+  const Translated(super.index, this.text, {this.reading});
 }
 
 /// Line already in the target language; copied, not translated (RQ-7).
@@ -50,6 +53,15 @@ class Copied extends LineResult {
 class Failed extends LineResult {
   final String reason;
   const Failed(super.index, this.reason);
+}
+
+extension LineResults on LineResult {
+  /// The same result for another line with identical text.
+  static LineResult reindex(LineResult r, int index) => switch (r) {
+        Translated() => Translated(index, r.text, reading: r.reading),
+        Copied() => Copied(index),
+        Failed() => Failed(index, r.reason),
+      };
 }
 
 /// SSRD A.III `Translator` + `Explainer`.
@@ -118,7 +130,16 @@ Future<T> withBackoff<T>(Future<T> Function() op, {int attempts = 3, double base
 /// Prompt templates. Versioned: translations and explanations are keyed by prompt version,
 /// so changing a prompt never overwrites earlier results (A.III data model).
 class Prompts {
-  static const version = 'p1';
+  /// p2 adds the reading ("r") of each translated line.
+  static const version = 'p2';
+
+  /// The script a reader of [target] uses to read how a foreign line sounds (독음).
+  static String readingScript(Language target) => switch (target.code) {
+        'ko' => 'Hangul (Korean 독음, e.g. 君の名は → 키미노 나와)',
+        'ja' => 'Katakana',
+        'zh' => 'Pinyin with tone marks for Chinese lines, otherwise Latin letters',
+        _ => 'Latin letters (romanization)',
+      };
 
   static String translationSystem(Language target) => '''You translate song lyrics for language learners.
 Translate each numbered line into natural, idiomatic ${target.englishName} (${target.code}).
@@ -127,8 +148,9 @@ Rules:
 - Use the surrounding lines as context for pronouns, tense and slang.
 - Return exactly one entry per input index. Never merge or split lines.
 - If a line is already in ${target.englishName}, return it with "copy": true and no translation.
+- For every translated line also give "r": how the ORIGINAL line sounds when sung, written in ${readingScript(target)}. Transcribe the sound only; do not translate it. Leave "r" out when the original is already written in that script.
 - Do not censor the original meaning.
-Respond only with JSON: {"lines":[{"i":0,"t":"..."},{"i":1,"copy":true}]}''';
+Respond only with JSON: {"lines":[{"i":0,"t":"...","r":"..."},{"i":1,"copy":true}]}''';
 
   static String translationUser(List<LyricLine> lines) => lines.map((l) => '${l.index}\t${l.text}').join('\n');
 
@@ -160,7 +182,7 @@ class StreamingLineParser {
   final _text = StringBuffer();
   int _pos = 0;
   final _seen = <int>{};
-  static final _entryStart = RegExp(r'\{\s*"(i|t|copy)"\s*:');
+  static final _entryStart = RegExp(r'\{\s*"(i|t|r|copy)"\s*:');
 
   StreamingLineParser(this.wanted);
 
@@ -259,7 +281,9 @@ class OutputValidator {
     final t = '${entry['t'] ?? ''}'.trim();
     if (t.isEmpty) return Failed(index, 'empty');
     if (isDegenerate(t)) return Failed(index, 'repetition');
-    return Translated(index, t);
+    final r = '${entry['r'] ?? ''}'.trim();
+    // A bad reading never fails the line; it is just left out.
+    return Translated(index, t, reading: r.isEmpty || isDegenerate(r) ? null : r);
   }
 
   static Explanation explanation(String text) {
@@ -1001,16 +1025,28 @@ class TranslationJob {
       return;
     }
 
+    // A repeated line (a chorus) is translated once: only the first line of each identical text
+    // goes to the engine, and its result is copied to the repeats.
+    final groups = <String, List<LyricLine>>{};
+    for (final l in pending) {
+      groups.putIfAbsent(l.text.trim(), () => []).add(l);
+    }
+    final firsts = [for (final g in groups.values) g.first];
+    final repeatsOf = {for (final g in groups.values) g.first.index: g};
+
     final seen = <int>{};
-    await for (final result in engine.translateSong(pending, target)) {
+    await for (final result in engine.translateSong(firsts, target)) {
       if (token.isCancelled) break;
-      if (!seen.add(result.index)) continue;
-      commit(result);
-      done += 1;
+      final group = repeatsOf[result.index];
+      if (group == null || !seen.add(result.index)) continue;
+      for (final l in group) {
+        commit(LineResults.reindex(result, l.index));
+      }
+      done += group.length;
       if (firstPreview == null && result is Translated) firstPreview = result.text;
       final processed = seen.length;
       final perLine = DateTime.now().difference(started).inMilliseconds / 1000 / processed;
-      final eta = perLine * (pending.length - processed);
+      final eta = perLine * (firsts.length - processed);
       progress(TranslationProgress(done: done, total: total, stage: Stage.translate, eta: eta, firstLinePreview: firstPreview));
     }
 
@@ -1018,8 +1054,11 @@ class TranslationJob {
     if (token.isCancelled) throw const CancelledException();
 
     // Every line must be accounted for (LOS-2): anything the engine skipped is marked failed.
-    for (final line in pending) {
-      if (!seen.contains(line.index)) commit(Failed(line.index, 'missing'));
+    for (final first in firsts) {
+      if (seen.contains(first.index)) continue;
+      for (final l in repeatsOf[first.index]!) {
+        commit(Failed(l.index, 'missing'));
+      }
     }
     progress(TranslationProgress(done: total, total: total, stage: Stage.save, eta: 0, firstLinePreview: firstPreview));
   }

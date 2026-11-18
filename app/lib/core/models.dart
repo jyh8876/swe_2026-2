@@ -196,6 +196,10 @@ class Translation {
 
   /// Translated text. Null when the line was copied (already in the target language) or failed.
   final String? text;
+
+  /// 독음: how the original line sounds, written in the reader's script (Hangul for Korean).
+  /// Null when the engine gave none (older translations, or the line needs none).
+  final String? reading;
   final Outcome outcome;
   final DateTime createdAt;
 
@@ -206,6 +210,7 @@ class Translation {
     required this.engineID,
     required this.promptVersion,
     this.text,
+    this.reading,
     required this.outcome,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
@@ -221,6 +226,7 @@ class Translation {
       'createdAt': c.encode(createdAt),
     };
     _put(m, 'text', text);
+    _put(m, 'reading', reading);
     return m;
   }
 
@@ -231,6 +237,7 @@ class Translation {
         engineID: j['engineID'] as String,
         promptVersion: j['promptVersion'] as String,
         text: j['text'] as String?,
+        reading: j['reading'] as String?,
         outcome: _enumByName(Outcome.values, j['outcome'], Outcome.failed),
         createdAt: c.decode(j['createdAt']),
       );

@@ -436,6 +436,7 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
     final active = rec != null ? line.index == rec.next : mode != _Mode.linkedSynced || line.index == current;
     final target = model.targetFor(id).code;
     final translation = model.translationSkipped(id) ? null : model.collection.translationText(id, line.index, target);
+    final reading = model.settings.showReading && !model.translationSkipped(id) ? model.collection.readingText(id, line.index, target) : null;
     // While the song plays, a tap moves the music to that line; tapping the current line (or a
     // long press) opens the explanation.
     final seekable = mode == _Mode.linkedSynced && line.start != null && (model.isPlayingSong(song) || model.tapSynced(song));
@@ -468,6 +469,22 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
                           : _openLine(line.index, mode),
               onLongPress: rec != null ? null : () => _openLine(line.index, mode),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                // 독음 sits right above the original line, small, like ruby text.
+                if (reading != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: AnimatedDefaultTextStyle(
+                      duration: const Duration(milliseconds: 200),
+                      style: TextStyle(
+                        fontFamily: AppTheme.fontFamilyOverride,
+                        fontSize: 12,
+                        height: 16 / 12,
+                        letterSpacing: -0.12,
+                        color: active ? PlayerPalette.subtle : PlayerPalette.placeholder,
+                      ),
+                      child: Text(reading),
+                    ),
+                  ),
                 AnimatedDefaultTextStyle(
                   duration: const Duration(milliseconds: 200),
                   style: TextStyle(

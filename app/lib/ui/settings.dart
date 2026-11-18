@@ -152,6 +152,12 @@ class _SettingsViewState extends State<SettingsView> {
             value: s.showTranslation,
             onChanged: (v) => model.updateSettings((x) => x.showTranslation = v),
           ),
+          SwitchListTile(
+            title: Text(tr('독음 표시'), style: TextStyle(color: t.textPrimary)),
+            subtitle: Text(tr('원문 위에 읽는 법을 보여줘요'), style: TextStyle(fontSize: 12, color: t.textTertiary)),
+            value: s.showReading,
+            onChanged: (v) => model.updateSettings((x) => x.showReading = v),
+          ),
         ]),
         if (MusicApp.supported)
           _section(tr('음악 앱'), [

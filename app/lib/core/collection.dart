@@ -86,6 +86,12 @@ class CollectionSnapshot {
     };
   }
 
+  /// 독음 shown above a line, when its translation came with one.
+  String? readingText(String songID, int index, String target) {
+    final t = translation(songID, index, target);
+    return t?.outcome == Outcome.translated ? t?.reading : null;
+  }
+
   int translatedCount(String songID, String target) => _idx.translated['$songID\u0000$target']?.length ?? 0;
 
   ExplanationRecord? explanation(String songID, int index, String target) => _idx.explanation['$songID\u0000$index\u0000$target'];
@@ -160,6 +166,7 @@ class CollectionSnapshot {
       engineID: engineID,
       promptVersion: Prompts.version,
       text: result is Translated ? result.text : null,
+      reading: result is Translated ? result.reading : null,
       outcome: switch (result) {
         Translated() => Outcome.translated,
         Copied() => Outcome.copied,
