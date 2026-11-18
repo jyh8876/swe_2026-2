@@ -132,7 +132,8 @@ class _CoverSelectViewState extends State<CoverSelectView> {
       isScrollControlled: true,
       backgroundColor: context.theme.surfaceRaised,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => _PinterestSheet(query: '${draft.artist} ${draft.title}'.trim(), pick: _pickPhoto),
+      // Artist name only: Pinterest has far more artist photos than pins for one song title.
+      builder: (_) => _PinterestSheet(query: (draft.artist.trim().isEmpty ? draft.title : draft.artist).trim(), pick: _pickPhoto),
     );
     if (p == null || !mounted) return;
     _pinterestPath = p;
