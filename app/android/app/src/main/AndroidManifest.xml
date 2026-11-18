@@ -35,6 +35,14 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="vynilo" android:host="spotify-callback"/>
             </intent-filter>
+            <!-- Screen links, e.g. for Play's pre-launch report: vynilo://open/search?q=…,
+                 vynilo://open/add, vynilo://open/my (see AppModel.openLink). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="vynilo" android:host="open"/>
+            </intent-filter>
         </activity>
         <!-- Notification access, granted by the user, lets the app follow and control music apps'
              media sessions (Spotify first): now playing, position, play/pause/seek/skip.

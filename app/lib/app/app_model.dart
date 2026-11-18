@@ -248,6 +248,7 @@ class AppModel extends ChangeNotifier {
   void listenForLinks() {
     _linkSub ??= Links.stream.listen((uri) async {
       try {
+        if (openLink(uri)) return;
         if (await spotifyAuth.finishLogin(uri)) {
           updateSettings((st) => st
             ..connectedSources.add(SourceID.spotify)
@@ -383,6 +384,34 @@ class AppModel extends ChangeNotifier {
   void showBanner(AppBanner? b) {
     banner = b;
     notifyListeners();
+  }
+
+  /// Screen links `vynilo://open/<screen>`: `library`, `search` (optional `?q=`), `add`, `quiz`,
+  /// `saved` and `my`. Used by Play's pre-launch report and for sharing. Returns false for other
+  /// links (such as the Spotify login redirect).
+  bool openLink(Uri uri) {
+    if (uri.scheme != 'vynilo' || uri.host != 'open') return false;
+    banner = null;
+    final screen = uri.pathSegments.isEmpty ? 'library' : uri.pathSegments.first;
+    switch (screen) {
+      case 'search':
+        selectedTab = AppTab.library;
+        libraryPath = [SearchRoute(uri.queryParameters['q'] ?? '')];
+      case 'add':
+        selectedTab = AppTab.library;
+        libraryPath = [AddRoute(AddSongDraft())];
+      case 'quiz':
+        selectedTab = AppTab.quiz;
+      case 'saved':
+        selectedTab = AppTab.phrases;
+      case 'my':
+        selectedTab = AppTab.my;
+      default:
+        selectedTab = AppTab.library;
+        libraryPath = [];
+    }
+    notifyListeners();
+    return true;
   }
 
   /// Settings live in the "My page" tab.
