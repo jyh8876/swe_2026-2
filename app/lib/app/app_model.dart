@@ -16,6 +16,7 @@ import '../core/models.dart';
 import '../core/playback.dart';
 import '../core/quiz.dart';
 import '../core/recommend.dart';
+import 'account.dart';
 import 'google_auth.dart';
 import 'i18n.dart';
 import 'platform_services.dart';
@@ -119,8 +120,8 @@ class AppSettings {
   bool cloudNoticeAccepted = false;
   Set<SourceID> connectedSources = {};
 
-  /// Google account chosen on sign-in (profile only; null when signed out).
-  GoogleAccountInfo? googleAccount;
+  /// The signed-in account, Google or Apple (profile only; null when signed out).
+  AccountInfo? account;
 
   // Engine settings that are not secrets (keys live in the SecureStore).
   String vyniloURL = VyniloServerEngine.defaultURL;
@@ -149,7 +150,7 @@ class AppSettings {
         'showReading': showReading,
         'cloudNoticeAccepted': cloudNoticeAccepted,
         'connectedSources': connectedSources.map((s) => s.name).toList(),
-        'googleAccount': googleAccount?.toJson(),
+        'account': account?.toJson(),
         'vyniloURL': vyniloURL,
         'vyniloModel': vyniloModel,
         'gatewayURL': gatewayURL,
@@ -172,7 +173,8 @@ class AppSettings {
         .map((n) => SourceID.values.where((s) => s.name == n).firstOrNull)
         .whereType<SourceID>()
         .toSet();
-    s.googleAccount = GoogleAccountInfo.fromJson(j['googleAccount']);
+    // 0.14 kept a Google account under 'googleAccount'.
+    s.account = AccountInfo.fromJson(j['account'] ?? j['googleAccount']);
     s.vyniloURL = j['vyniloURL'] as String? ?? VyniloServerEngine.defaultURL;
     s.vyniloModel = j['vyniloModel'] as String? ?? '';
     s.gatewayURL = j['gatewayURL'] as String? ?? '';
@@ -656,19 +658,61 @@ class AppModel extends ChangeNotifier {
   /// The user connected Spotify (optional since 0.11.0): songs then start in the Spotify app.
   bool get spotifyConnected => settings.connectedSources.contains(SourceID.spotify);
 
-  /// The Google row is offered only in builds that have the client IDs.
+  /// Google sign-in is offered only in builds that have the client IDs.
   bool get googleAvailable => GoogleAuth.isConfigured;
-  GoogleAccountInfo? get googleAccount => settings.googleAccount;
+
+  /// Sign in with Apple is offered on iOS.
+  bool get appleAvailable => AppleAuth.isSupported;
+  AccountInfo? get account => settings.account;
+
+  /// The account server; null keeps the account on this device only.
+  AccountApi accountApi = AccountApi();
 
   /// Throws [GoogleSignInException] on failure; a cancelled sign-in changes nothing.
-  Future<void> signInGoogle() async {
-    final account = await GoogleAuth.signIn();
-    if (account != null) updateSettings((s) => s.googleAccount = account);
+  Future<void> signInGoogle() => _signIn(GoogleAuth.signIn);
+
+  /// Throws [SignInWithAppleException] on failure; a cancelled sign-in changes nothing.
+  Future<void> signInApple() => _signIn(AppleAuth.signIn);
+
+  /// Signs in, registers the user on the account server (when the build has one), then keeps
+  /// the profile. A server failure leaves the app signed out and is rethrown.
+  Future<void> _signIn(Future<SignInResult?> Function() provider) async {
+    final r = await provider();
+    if (r != null) await completeSignIn(r);
   }
 
-  Future<void> signOutGoogle() async {
-    await GoogleAuth.signOut();
-    updateSettings((s) => s.googleAccount = null);
+  /// The part of sign-in after the provider answered; tests call it directly.
+  @visibleForTesting
+  Future<void> completeSignIn(SignInResult r) async {
+    if (accountApi.isConfigured) {
+      final token = r.idToken;
+      if (token == null) throw const AccountApiException('no ID token');
+      await accountApi.register(token, name: r.account.name);
+    }
+    updateSettings((s) => s.account = r.account);
+  }
+
+  /// Signs out on this device. The account stays on the server.
+  Future<void> signOut() async {
+    if (settings.account?.provider == 'google') await GoogleAuth.signOut();
+    updateSettings((s) => s.account = null);
+  }
+
+  /// Deletes the account: the user signs in once more so the server can check who is asking
+  /// (and, for Apple, revoke the Apple tokens), then the record is deleted and the app signs out.
+  /// Returns false when the user cancels. Songs and lyrics on the device are not touched.
+  Future<bool> deleteAccount() async {
+    final current = settings.account;
+    if (current == null) return true;
+    if (accountApi.isConfigured) {
+      final r = current.isApple ? await AppleAuth.signIn() : await GoogleAuth.signIn();
+      if (r == null) return false;
+      final token = r.idToken;
+      if (token == null) throw const AccountApiException('no ID token');
+      await accountApi.delete(token, authorizationCode: r.authorizationCode);
+    }
+    await signOut();
+    return true;
   }
 
   /// Opens the Spotify login (PKCE) or, when already logged in, connects to the Spotify app.

@@ -3,10 +3,12 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../app/account.dart';
 import '../app/app_model.dart';
 import '../app/i18n.dart';
 import '../app/platform_services.dart';
@@ -186,23 +188,52 @@ class _SettingsViewState extends State<SettingsView> {
                   style: TextStyle(fontSize: 12, color: t.textTertiary)),
             ),
           ]),
-        if (model.googleAvailable || model.googleAccount != null)
+        if (model.googleAvailable || model.appleAvailable || model.account != null)
           _section(tr('계정'), [
-            ListTile(
-              leading: Icon(Icons.account_circle_outlined, color: t.textPrimary, size: 28),
-              title: Text(tr('Google 계정'), style: TextStyle(color: t.textPrimary)),
-              subtitle: Text(model.googleAccount?.email ?? tr('선택 사항 · 계정 정보만 이 기기에 저장해요'),
-                  style: TextStyle(fontSize: 12, color: t.textTertiary)),
-              trailing: model.googleAccount != null
-                  ? TextButton(
-                      onPressed: () => _signOutGoogle(model),
-                      child: Text(tr('로그아웃'), style: TextStyle(color: t.textSecondary)),
-                    )
-                  : TextButton(
-                      onPressed: () => _signInGoogle(model),
-                      child: Text(tr('로그인'), style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w600)),
-                    ),
-            ),
+            if (model.account case final a?) ...[
+              ListTile(
+                leading: Icon(a.isApple ? Icons.apple : Icons.account_circle_outlined, color: t.textPrimary, size: 28),
+                title: Text(a.isApple ? tr('Apple 계정') : tr('Google 계정'), style: TextStyle(color: t.textPrimary)),
+                subtitle: Text(a.email ?? a.name ?? tr('이메일 비공개'), style: TextStyle(fontSize: 12, color: t.textTertiary)),
+                trailing: TextButton(
+                  onPressed: () => _signOut(model),
+                  child: Text(tr('로그아웃'), style: TextStyle(color: t.textSecondary)),
+                ),
+              ),
+              ListTile(
+                title: Text(tr('계정 삭제'), style: const TextStyle(color: Color(0xFFE5484D))),
+                subtitle: Text(tr('서버에 저장된 계정 정보를 지워요. 이 기기의 노래와 가사는 그대로예요.'), style: TextStyle(fontSize: 12, color: t.textTertiary)),
+                onTap: () => _deleteAccount(model),
+              ),
+            ] else ...[
+              if (model.appleAvailable)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: SignInWithAppleButton(
+                    text: tr('Apple로 로그인'),
+                    height: 44,
+                    style: t.isDark ? SignInWithAppleButtonStyle.white : SignInWithAppleButtonStyle.black,
+                    onPressed: () => _signInApple(model),
+                  ),
+                ),
+              if (model.googleAvailable)
+                ListTile(
+                  leading: Icon(Icons.account_circle_outlined, color: t.textPrimary, size: 28),
+                  title: Text(tr('Google 계정'), style: TextStyle(color: t.textPrimary)),
+                  trailing: TextButton(
+                    onPressed: () => _signInGoogle(model),
+                    child: Text(tr('로그인'), style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w600)),
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: Text(
+                    model.accountApi.isConfigured
+                        ? tr('선택 사항 · 계정 정보(이메일, 이름)만 저장하고 가사는 저장하지 않아요')
+                        : tr('선택 사항 · 계정 정보만 이 기기에 저장해요'),
+                    style: TextStyle(fontSize: 12, color: t.textTertiary)),
+              ),
+            ],
           ]),
         _section('Spotify', [
           ListTile(
@@ -383,13 +414,40 @@ class _SettingsViewState extends State<SettingsView> {
       await model.signInGoogle();
     } on GoogleSignInException catch (e) {
       if (mounted) showMessage(context, tr('Google 로그인에 실패했어요: {0}', [e.description ?? e.code.name]));
+    } on AccountApiException catch (e) {
+      if (mounted) showMessage(context, tr('로그인하지 못했어요: {0}', ['$e']));
     }
   }
 
-  Future<void> _signOutGoogle(AppModel model) async {
+  Future<void> _signInApple(AppModel model) async {
+    try {
+      await model.signInApple();
+    } on SignInWithAppleException catch (e) {
+      if (mounted) showMessage(context, tr('Apple 로그인에 실패했어요: {0}', ['$e']));
+    } on AccountApiException catch (e) {
+      if (mounted) showMessage(context, tr('로그인하지 못했어요: {0}', ['$e']));
+    }
+  }
+
+  Future<void> _signOut(AppModel model) async {
     final ok = await confirmDialog(context,
-        title: tr('Google 계정에서 로그아웃할까요?'), message: tr('이 기기에서 계정 정보를 지워요. Google 계정 자체는 그대로예요.'), confirm: tr('로그아웃'), destructive: true);
-    if (ok) await model.signOutGoogle();
+        title: tr('계정에서 로그아웃할까요?'), message: tr('이 기기에서 계정 정보를 지워요. 계정은 그대로 남아 있어요.'), confirm: tr('로그아웃'), destructive: true);
+    if (ok) await model.signOut();
+  }
+
+  /// Account deletion (App Store guideline 5.1.1(v)): asks once, then re-authenticates.
+  Future<void> _deleteAccount(AppModel model) async {
+    final ok = await confirmDialog(context,
+        title: tr('계정을 삭제할까요?'),
+        message: tr('본인 확인을 위해 한 번 더 로그인해요. 서버의 계정 정보가 지워지고 로그아웃돼요. 이 기기의 노래와 가사는 그대로예요.'),
+        confirm: tr('삭제'),
+        destructive: true);
+    if (!ok) return;
+    try {
+      if (await model.deleteAccount() && mounted) showMessage(context, tr('계정을 삭제했어요.'));
+    } catch (e) {
+      if (mounted) showMessage(context, tr('계정을 삭제하지 못했어요: {0}', ['$e']));
+    }
   }
 
   Future<void> _logout(AppModel model) async {
