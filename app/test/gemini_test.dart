@@ -33,7 +33,8 @@ void main() {
     expect(
         GeminiEngine.pickModel(['gemini-2.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.8-flash-preview-09-2026', 'gemini-2.5-flash-image', 'gemini-2.5-pro']),
         'gemini-3.5-flash');
-    expect(GeminiEngine.pickModel(['gemini-2.5-flash-lite', 'gemini-2.0-flash-001']), 'gemini-2.5-flash-lite');
+    expect(GeminiEngine.rankModels(['gemini-2.5-flash-lite', 'gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-2.5-flash']),
+        ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash-lite']);
     expect(GeminiEngine.pickModel(['gemini-flash-latest', 'gemini-2.5-pro']), 'gemini-flash-latest');
     expect(GeminiEngine.pickModel(['gemini-2.5-pro']), isNull);
   });
@@ -91,15 +92,22 @@ void main() {
     expect(bodies.last['generationConfig']['maxOutputTokens'], 4196);
   });
 
-  test('a retired model is replaced from a fresh model list', () async {
-    var listed = 0;
+  test('closed (404) and overloaded (503) models are skipped; the one that answers is kept', () async {
+    final asked = <String>[];
     final e = GeminiEngine('k404', client: MockClient((r) async {
-      if (r.method == 'GET') return json(models(listed++ == 0 ? ['gemini-2.5-flash'] : ['gemini-3.5-flash-lite']));
-      if (r.url.path.contains('gemini-2.5-flash')) return json({'error': {'code': 404}}, 404);
+      if (r.method == 'GET') return json(models(['gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-3.5-flash-lite']));
+      final model = r.url.pathSegments.last.split(':').first;
+      asked.add(model);
+      if (model == 'gemini-3.8-flash') return json({'error': {'code': 503, 'status': 'UNAVAILABLE'}}, 503);
+      if (model == 'gemini-2.5-flash') return json({'error': {'code': 404, 'message': 'no longer available to new users'}}, 404);
       return json(answer('{"x":1}'));
     }));
     expect(await e.complete(system: 's', user: 'u', maxTokens: 50), '{"x":1}');
+    expect(asked, ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.5-flash-lite']);
     expect(e.currentModel, 'gemini-3.5-flash-lite');
+    asked.clear();
+    await e.complete(system: 's', user: 'u', maxTokens: 50);
+    expect(asked, ['gemini-3.5-flash-lite']);
   });
 
   test('a cut-off answer with no text is an error, not an empty success', () async {

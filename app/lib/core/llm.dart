@@ -135,12 +135,13 @@ Future<T> withBackoff<T>(Future<T> Function() op, {int attempts = 3, double base
 /// Prompt templates. Versioned: translations and explanations are keyed by prompt version,
 /// so changing a prompt never overwrites earlier results (A.III data model).
 class Prompts {
-  /// p2 adds the reading ("r") of each translated line; p3 softens profanity.
-  static const version = 'p3';
+  /// p2 adds the reading ("r") of each translated line; p3 softens profanity; p4 keeps "t" (meaning)
+  /// and "r" (sound) apart and stops copying lines in other scripts.
+  static const version = 'p4';
 
   /// The script a reader of [target] uses to read how a foreign line sounds (독음).
   static String readingScript(Language target) => switch (target.code) {
-        'ko' => 'Hangul (Korean 독음, e.g. 君の名は → 키미노 나와)',
+        'ko' => 'Hangul letters that spell the sound (독음)',
         'ja' => 'Katakana',
         'zh' => 'Pinyin with tone marks for Chinese lines, otherwise Latin letters',
         _ => 'Latin letters (romanization)',
@@ -152,9 +153,10 @@ Rules:
 - Keep the meaning, tone and register of the song; prefer natural phrasing over literal word order.
 - Use the surrounding lines as context for pronouns, tense and slang.
 - Return exactly one entry per input index. Never merge or split lines.
-- If a line is already in ${target.englishName}, return it with "copy": true and no translation.
-- For every translated line also give "r": how the ORIGINAL line sounds when sung, written in ${readingScript(target)}. Transcribe the sound only; do not translate it. Leave "r" out when the original is already written in that script.
-- Profanity, slurs and crude sexual words: keep what the line means and how strong the feeling is, but write it in milder words a general audience can read (e.g. "fucking" used as an intensifier → "really"; a slur → a neutral word for the person). Never use asterisks or blanks; never leave a line untranslated because of its words.
+- "t" is always the MEANING of the line written in ${target.englishName}. Never put a transcription of the sound in "t".
+- Use "copy": true only when the line's words are already ${target.englishName}. A line in any other language or script (Japanese, Chinese, English…) must be translated, even when it is short.
+- For every translated line also give "r": how the ORIGINAL line sounds when sung, written in ${readingScript(target)}. "r" is the sound only, never the meaning. Leave "r" out when the original is already written in that script.
+${target.code == 'ko' ? '- Example for the Japanese line 君の名前を呼んだ: {"i":0,"t":"너의 이름을 불렀어","r":"키미노 나마에오 욘다"}\n' : ''}- Profanity, slurs and crude sexual words: keep what the line means and how strong the feeling is, but write it in milder words a general audience can read (e.g. "fucking" used as an intensifier → "really"; a slur → a neutral word for the person). Never use asterisks or blanks; never leave a line untranslated because of its words.
 Respond only with JSON: {"lines":[{"i":0,"t":"...","r":"..."},{"i":1,"copy":true}]}''';
 
   static String translationUser(List<LyricLine> lines) => lines.map((l) => '${l.index}\t${l.text}').join('\n');
@@ -680,13 +682,15 @@ class ClaudeEngine extends CloudChatEngine {
 
 /// Gemini API adapter (SIR-10). Same contract as Claude behind the same engine interface.
 class GeminiEngine extends CloudChatEngine {
-  /// Used when the model list cannot be read. Google retires Gemini models on a schedule
-  /// (2.5 Flash: 2026-12-01), so the model is normally picked from the key's own model list.
-  static const defaultModel = 'gemini-2.5-flash';
+  /// Used only when the model list cannot be read. Google closes older models to new keys
+  /// (2.5 Flash answers 404 "no longer available to new users"), so models normally come from the
+  /// key's own model list.
+  static const defaultModel = 'gemini-3.5-flash-lite';
   static const _api = 'https://generativelanguage.googleapis.com/v1beta';
 
-  /// The model picked for each key in this run of the app.
-  static final _picked = <String, String>{};
+  /// Models to try for each key, best first, and the one that last answered.
+  static final _candidates = <String, List<String>>{};
+  static final _working = <String, String>{};
 
   final String? _fixedModel;
 
@@ -694,8 +698,9 @@ class GeminiEngine extends CloudChatEngine {
       : _fixedModel = model,
         super(apiKey, model ?? defaultModel, client);
 
-  /// The model in use: the one given, else the one picked for this key, else [defaultModel].
-  String get currentModel => _fixedModel ?? _picked[apiKey] ?? defaultModel;
+  /// The model in use: the one given, else the one that last answered for this key, else the best
+  /// candidate, else [defaultModel].
+  String get currentModel => _fixedModel ?? _working[apiKey] ?? _candidates[apiKey]?.firstOrNull ?? defaultModel;
 
   @override
   String get id => 'gemini:$currentModel';
@@ -704,32 +709,33 @@ class GeminiEngine extends CloudChatEngine {
 
   Map<String, String> get _headers => {'x-goog-api-key': apiKey, 'content-type': 'application/json'};
 
-  /// Picks the best stable Flash model from the names the key can use for generateContent:
-  /// highest version first, Flash before Flash-Lite; previews, experiments and special-purpose
-  /// models (image, audio, live, TTS) are left out. Null when none fits.
-  static String? pickModel(Iterable<String> names) {
+  /// Stable Flash and Flash-Lite models from [names], best first: Flash before Flash-Lite, then
+  /// the higher version. Previews, experiments, aliases and special-purpose models (image, audio,
+  /// live, TTS) are left out.
+  static List<String> rankModels(Iterable<String> names) {
     final re = RegExp(r'^gemini-(\d+(?:\.\d+)?)-flash(-lite)?(?:-(\d{3}))?$');
-    (double, int, int, String)? best;
+    final found = <(double, int, int, String)>[];
     for (final n in names) {
       final m = re.firstMatch(n);
-      if (m == null) continue;
-      final rank = (double.parse(m.group(1)!), m.group(2) == null ? 1 : 0, m.group(3) == null ? 1 : 0, n);
-      if (best == null ||
-          rank.$1 > best.$1 ||
-          (rank.$1 == best.$1 && (rank.$2 > best.$2 || (rank.$2 == best.$2 && rank.$3 > best.$3)))) {
-        best = rank;
-      }
+      if (m != null) found.add((double.parse(m.group(1)!), m.group(2) == null ? 1 : 0, m.group(3) == null ? 1 : 0, n));
     }
-    if (best != null) return best.$4;
+    found.sort((a, b) => a.$2 != b.$2 ? b.$2 - a.$2 : (a.$1 != b.$1 ? b.$1.compareTo(a.$1) : b.$3 - a.$3));
+    return [for (final f in found) f.$4];
+  }
+
+  /// The first model [rankModels] would try (aliases only when nothing else fits).
+  static String? pickModel(Iterable<String> names) {
+    final ranked = rankModels(names);
+    if (ranked.isNotEmpty) return ranked.first;
     return names.contains('gemini-flash-latest') ? 'gemini-flash-latest' : null;
   }
 
-  /// Reads the models this key can use (no text is generated, so it costs nothing) and picks one.
+  /// Reads the models this key can use (no text is generated, so it costs nothing).
   /// Throws [LLMError.invalidKey] for a key Google does not accept.
-  Future<String> _resolveModel() async {
+  Future<List<String>> _models() async {
     final fixed = _fixedModel;
-    if (fixed != null) return fixed;
-    final known = _picked[apiKey];
+    if (fixed != null) return [fixed];
+    final known = _candidates[apiKey];
     if (known != null) return known;
     if (apiKey.isEmpty) throw LLMError.missingAPIKey;
     final names = <String>[];
@@ -752,7 +758,9 @@ class GeminiEngine extends CloudChatEngine {
       page = j['nextPageToken'] as String?;
       if (page == null || page.isEmpty) break;
     }
-    return _picked[apiKey] = pickModel(names) ?? defaultModel;
+    final ranked = rankModels(names);
+    if (ranked.isEmpty) ranked.add(pickModel(names) ?? defaultModel);
+    return _candidates[apiKey] = ranked;
   }
 
   /// Maps Gemini's error answers. 400 is a wrong key only when Google says so (API_KEY_INVALID);
@@ -763,7 +771,6 @@ class GeminiEngine extends CloudChatEngine {
     final body = utf8.decode(r.bodyBytes, allowMalformed: true);
     if (s == 401 || s == 403 || (s == 400 && body.contains('API_KEY_INVALID'))) throw LLMError.invalidKey;
     if (s == 429) throw LLMError.rateLimited;
-    if (s == 404) throw LLMError(LLMErrorKind.server, status: s, detail: 'model not found');
     throw LLMError(LLMErrorKind.server, status: s, detail: _message(body));
   }
 
@@ -776,7 +783,7 @@ class GeminiEngine extends CloudChatEngine {
   }
 
   /// Thinking models count their reasoning against maxOutputTokens, which left translations cut
-  /// off mid-JSON. 2.5 models switch thinking off with a zero budget; later models get a low
+  /// off mid-JSON. 2.x models switch thinking off with a zero budget; later models get a low
   /// thinking level and extra room.
   static Map<String, dynamic>? _thinking(String model) {
     if (model.startsWith('gemini-2.5-flash')) return {'thinkingBudget': 0};
@@ -784,51 +791,77 @@ class GeminiEngine extends CloudChatEngine {
     return {'thinkingLevel': 'low'};
   }
 
+  /// A model that cannot answer now: closed to this key (404), overloaded (500, 503, 504) or
+  /// too slow. The next model is tried.
+  static bool _tryNext(LLMError e) =>
+      e.kind == LLMErrorKind.network || (e.kind == LLMErrorKind.server && const {404, 500, 503, 504}.contains(e.status));
+
   @override
   Future<void> verifyKey() async {
-    _picked.remove(apiKey);
-    await _resolveModel();
+    _candidates.remove(apiKey);
+    _working.remove(apiKey);
+    await _models();
   }
 
   @override
   Future<String> complete({required String system, required String user, required int maxTokens}) async {
     if (apiKey.isEmpty) throw LLMError.missingAPIKey;
-    var model = await _resolveModel();
+    final models = await _models();
+    final working = _working[apiKey];
+    final order = [?working, ...models.where((m) => m != working)];
+    LLMError? last;
+    for (final model in order.take(6)) {
+      try {
+        final text = await _ask(model, system, user, maxTokens);
+        if (_fixedModel == null) _working[apiKey] = model;
+        return text;
+      } on LLMError catch (e) {
+        if (!_tryNext(e)) rethrow;
+        last = e;
+        if (_working[apiKey] == model) _working.remove(apiKey);
+      }
+    }
+    throw last ?? const LLMError(LLMErrorKind.server);
+  }
+
+  Future<String> _ask(String model, String system, String user, int maxTokens) async {
     var thinking = _thinking(model);
     for (var attempt = 0;; attempt++) {
-      final r = await post(Uri.parse('$_api/models/$model:generateContent'), _headers, {
-        'systemInstruction': {
-          'parts': [
-            {'text': system},
-          ],
-        },
-        'contents': [
-          {
-            'role': 'user',
-            'parts': [
-              {'text': user},
-            ],
-          },
-        ],
-        'generationConfig': {
-          // Room for reasoning unless thinking is switched off.
-          'maxOutputTokens': thinking != null && thinking['thinkingBudget'] == 0 ? maxTokens : maxTokens + 4096,
-          'responseMimeType': 'application/json',
-          'thinkingConfig': ?thinking,
-        },
-      });
+      final http.Response r;
+      try {
+        r = await client
+            .post(Uri.parse('$_api/models/$model:generateContent'),
+                headers: _headers,
+                body: jsonEncode({
+                  'systemInstruction': {
+                    'parts': [
+                      {'text': system},
+                    ],
+                  },
+                  'contents': [
+                    {
+                      'role': 'user',
+                      'parts': [
+                        {'text': user},
+                      ],
+                    },
+                  ],
+                  'generationConfig': {
+                    // Room for reasoning unless thinking is switched off.
+                    'maxOutputTokens': thinking != null && thinking['thinkingBudget'] == 0 ? maxTokens : maxTokens + 4096,
+                    'responseMimeType': 'application/json',
+                    'thinkingConfig': ?thinking,
+                  },
+                }))
+            // A busy model can hang instead of answering 503; give up and try the next one.
+            .timeout(const Duration(seconds: 45));
+      } catch (_) {
+        throw LLMError.network;
+      }
       try {
         _check(r);
       } on LLMError catch (e) {
-        if (attempt >= 2) rethrow;
-        if (e.status == 404 && _fixedModel == null) {
-          // The picked model was retired: read the list again and pick another.
-          _picked.remove(apiKey);
-          model = await _resolveModel();
-          thinking = _thinking(model);
-          continue;
-        }
-        if (e.status == 400 && thinking != null) {
+        if (e.status == 400 && thinking != null && attempt == 0) {
           // A model that does not take this thinking setting: ask again without it.
           thinking = null;
           continue;
