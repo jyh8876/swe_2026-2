@@ -8,7 +8,7 @@ Version 0.11.0, Android package `com.vinylo.app`, shown as **Vinylo**. Named DAY
   - Songs started from the app are handed to the music app as a "play from search" request.
   - Spotify is optional: connecting it adds your playlists and starts songs directly in the Spotify app (App Remote SDK). The Web API covers login, library and covers.
 - **Adding songs:**
-  - Search lyrics on LRCLIB (retries when it is busy), or pick tracks from your Spotify library; the album art becomes the cover.
+  - No lyrics server: "Add song" opens a web search for `artist title .lrc` and the add screen, where you paste the copied lyrics (timed LRC or plain). Tracks from your Spotify library work the same way; the album art becomes the cover.
   - Manual add with LRC auto-detection, and a duplicate check.
 - **Translation engines:**
   - On-device llama.cpp with Gemma 4 E2B (downloaded in the app, Android arm64).
@@ -34,7 +34,7 @@ app/
 ├── lib/core/      platform-free logic
 │   ├── models.dart        Song, LyricLine, Translation, Explanation, Phrase, ListenSession, Language
 │   ├── collection.dart    CollectionSnapshot (indexed lookups), JSON repository, export/import, mastery, shelves
-│   ├── lyrics.dart        LRC parser, track normaliser and matcher, LRCLIB client
+│   ├── lyrics.dart        LRC parser, track normaliser and matcher, .lrc web search
 │   ├── llm.dart           engines (gateway, Claude, Gemini, Vynilo server, on-device), prompts,
 │   │                      streaming line parser, output validator, language detection, TranslationJob
 │   ├── playback.dart      NowPlayingSource, SyncEngine (SimulatedSource is for tests)

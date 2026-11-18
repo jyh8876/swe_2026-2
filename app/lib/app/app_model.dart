@@ -32,8 +32,8 @@ sealed class Route {
 class SearchRoute extends Route {
   final String prefill;
 
-  /// The exact track when known (recommendations, now playing): looked up with LRCLIB /get,
-  /// which keeps working when /search is overloaded.
+  /// The exact track when known (recommendations, now playing): fills in the title and artist
+  /// for the web lyrics search and the add screen.
   final TrackKey? hint;
   const SearchRoute([this.prefill = '', this.hint]);
 }
@@ -97,7 +97,7 @@ class AddSongDraft {
     album = c.albumName;
     duration = c.duration;
     lyrics = c.bestLyricsText ?? '';
-    sourceProvider = c.id < 0 ? 'demo' : 'lrclib';
+    sourceProvider = c.id < 0 ? 'demo' : 'manual';
     curatedShelfID = shelfID;
   }
 }
@@ -299,8 +299,9 @@ class AppModel extends ChangeNotifier {
     return AppModel._(
       repository: repo,
       secureStore: secure,
-      // The bundled demo song is not on Spotify, so it is left out of the shipped app's search.
-      lyricsProvider: DemoAwareLyricsProvider(includeDemo: false),
+      // No lyrics server: users find lyrics with a web search (".lrc") and paste them.
+      // The bundled demo song is left out of the shipped app.
+      lyricsProvider: const StaticLyricsProvider([]),
       prefs: prefs,
       settings: settings,
       collection: snap,

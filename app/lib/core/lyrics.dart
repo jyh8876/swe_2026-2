@@ -1,7 +1,5 @@
-import 'dart:convert';
 import 'dart:math';
 
-import 'package:http/http.dart' as http;
 
 import 'models.dart';
 
@@ -78,7 +76,7 @@ class LRCParser {
     return LyricsDocument(lines, LyricsType.synced);
   }
 
-  /// Only leading tags count; inline tags are rare in LRCLIB.
+  /// Only leading tags count; inline tags are rare in LRC files.
   static List<double> timeTags(String line) {
     final result = <double>[];
     var cursor = 0;
@@ -147,7 +145,7 @@ class TrackNormalizer {
     return buf.toString().split(' ').where((w) => w.isNotEmpty).join(' ');
   }
 
-  /// The title as LRCLIB usually stores it: without "(feat. …)", "[Live]" or " - Remastered 2011".
+  /// The title as lyrics sites usually store it: without "(feat. …)", "[Live]" or " - Remastered 2011".
   static String cleanTitle(String title) => title
       .replaceAll(RegExp(r'\s*[\(\[][^\)\]]*[\)\]]'), '')
       .replaceAll(RegExp(r'\s+-\s+.*$'), '')
@@ -271,113 +269,22 @@ abstract class LyricsProvider {
   Future<LyricsCandidate?> lyrics(TrackKey track);
 }
 
-enum LyricsErrorKind { offline, busy, http, decoding }
-
-class LyricsError implements Exception {
-  final LyricsErrorKind kind;
-  final int? status;
-  const LyricsError(this.kind, [this.status]);
-  @override
-  String toString() => 'LyricsError($kind, $status)';
-}
-
-/// A web search for a song's lyrics, for when LRCLIB has none (ONRQ-1): the user copies the
-/// lyrics from the browser and pastes them into the add screen.
+/// A web search for a song's lyrics as an LRC file. The app fetches no lyrics itself: the user
+/// opens this search, copies the lyrics (timed LRC when found) and pastes them on the add screen.
 class LyricsWebSearch {
-  /// [word] is "lyrics" in the interface language (가사, lyrics, 歌词, 歌詞).
-  static Uri url({required String title, String artist = '', String word = 'lyrics'}) {
-    final terms = [TrackNormalizer.primaryArtist(artist.trim()), title.trim(), word].where((s) => s.isNotEmpty);
-    return Uri.https('www.google.com', '/search', {'q': terms.join(' ')});
-  }
+  /// Appended to every search so that time-tagged LRC lyrics come up first.
+  static const suffix = '.lrc';
+
+  /// "Jay Chou 晴天 .lrc": primary artist, title, then [suffix]; blanks dropped.
+  static String query({required String title, String artist = ''}) =>
+      [TrackNormalizer.primaryArtist(artist.trim()), title.trim(), suffix].where((s) => s.isNotEmpty).join(' ');
+
+  static Uri url({required String title, String artist = ''}) =>
+      Uri.https('www.google.com', '/search', {'q': query(title: title, artist: artist)});
 }
 
-/// LRCLIB adapter (SIR-7). Plain HTTPS GET, no key; polite User-Agent; results cached in memory.
-class LRCLIBClient implements LyricsProvider {
-  final http.Client _client;
-  final Uri baseURL;
-  final String userAgent;
-  final Future<void> Function(Duration) _sleep;
-  final _cache = <String, List<LyricsCandidate>>{};
-
-  /// LRCLIB often answers 503 "ServerOverloaded" (Retry-After: 1) on /search while /get still works.
-  static const maxAttempts = 6;
-
-  LRCLIBClient({
-    http.Client? client,
-    Uri? baseURL,
-    this.userAgent = 'Vinylo/0.13 (lyrics study app)',
-    Future<void> Function(Duration)? sleep,
-  })  : _client = client ?? http.Client(),
-        baseURL = baseURL ?? Uri.parse('https://lrclib.net/api'),
-        _sleep = sleep ?? Future<void>.delayed;
-
-  @override
-  Future<List<LyricsCandidate>> search(String query) async {
-    final key = 'search:${query.toLowerCase()}';
-    final hit = _cache[key];
-    if (hit != null) return hit;
-    final body = await _get(baseURL.replace(path: '${baseURL.path}/search', queryParameters: {'q': query}));
-    if (body is! List) throw const LyricsError(LyricsErrorKind.decoding);
-    final results = body.map((e) => LyricsCandidate.fromJson(Map<String, dynamic>.from(e as Map))).toList();
-    _cache[key] = results;
-    return results;
-  }
-
-  /// Exact lookup with `/get`. Music apps name things differently from LRCLIB (album titles,
-  /// "(feat. …)", "- Remastered"), so a miss is retried without the album, then with the title
-  /// cleaned up.
-  @override
-  Future<LyricsCandidate?> lyrics(TrackKey track) async {
-    final artist = TrackNormalizer.primaryArtist(track.artist);
-    final duration = track.duration == null ? null : '${track.duration!.round()}';
-    final cleanTitle = TrackNormalizer.cleanTitle(track.title);
-    final variants = <Map<String, String>>[
-      {'track_name': track.title, 'artist_name': artist, if (track.album != null) 'album_name': track.album!, 'duration': ?duration},
-      if (track.album != null) {'track_name': track.title, 'artist_name': artist, 'duration': ?duration},
-      if (cleanTitle != track.title && cleanTitle.isNotEmpty) {'track_name': cleanTitle, 'artist_name': artist, 'duration': ?duration},
-    ];
-    for (final q in variants) {
-      try {
-        final body = await _get(baseURL.replace(path: '${baseURL.path}/get', queryParameters: q));
-        return LyricsCandidate.fromJson(Map<String, dynamic>.from(body as Map));
-      } on LyricsError catch (e) {
-        if (e.kind == LyricsErrorKind.http && e.status == 404) continue;
-        rethrow;
-      }
-    }
-    return null;
-  }
-
-  /// GET with retries: 503/429 wait for Retry-After (growing a little each time); a network
-  /// failure is retried once.
-  Future<Object?> _get(Uri url) async {
-    late http.Response r;
-    for (var attempt = 1;; attempt++) {
-      try {
-        r = await _client.get(url, headers: {'User-Agent': userAgent}).timeout(const Duration(seconds: 15));
-      } catch (_) {
-        if (attempt < 2) {
-          await _sleep(const Duration(seconds: 1));
-          continue;
-        }
-        throw const LyricsError(LyricsErrorKind.offline);
-      }
-      final busy = r.statusCode == 503 || r.statusCode == 429;
-      if (!busy) break;
-      if (attempt >= maxAttempts) throw LyricsError(LyricsErrorKind.busy, r.statusCode);
-      final after = double.tryParse(r.headers['retry-after'] ?? '') ?? 1;
-      await _sleep(Duration(milliseconds: (after * 1000 * (1 + 0.5 * (attempt - 1))).round().clamp(500, 5000)));
-    }
-    if (r.statusCode < 200 || r.statusCode >= 300) throw LyricsError(LyricsErrorKind.http, r.statusCode);
-    try {
-      return jsonDecode(utf8.decode(r.bodyBytes));
-    } catch (_) {
-      throw const LyricsError(LyricsErrorKind.decoding);
-    }
-  }
-}
-
-/// Offline provider backed by fixtures; used by tests and the demo mode.
+/// Local provider backed by fixtures: the demo song in demo mode and tests, nothing in the
+/// shipped app (lyrics are pasted, not fetched).
 class StaticLyricsProvider implements LyricsProvider {
   final List<LyricsCandidate> candidates;
   const StaticLyricsProvider(this.candidates);
@@ -398,36 +305,6 @@ class StaticLyricsProvider implements LyricsProvider {
       if (TrackMatcher.matches(c.trackKey, track)) return c;
     }
     return null;
-  }
-}
-
-/// LRCLIB, plus the bundled demo song so the app is usable offline and in review.
-class DemoAwareLyricsProvider implements LyricsProvider {
-  final LyricsProvider remote;
-  final LyricsProvider demo;
-  DemoAwareLyricsProvider({LyricsProvider? remote, bool includeDemo = true})
-      : remote = remote ?? LRCLIBClient(),
-        demo = StaticLyricsProvider(includeDemo ? DemoContent.candidates : const []);
-
-  @override
-  Future<List<LyricsCandidate>> search(String query) async {
-    final local = await demo.search(query);
-    try {
-      return [...local, ...await remote.search(query)];
-    } catch (_) {
-      if (local.isNotEmpty) return local;
-      rethrow;
-    }
-  }
-
-  @override
-  Future<LyricsCandidate?> lyrics(TrackKey track) async {
-    final hit = await demo.lyrics(track);
-    if (hit != null) return hit;
-    final exact = await remote.lyrics(track);
-    if (exact != null) return exact;
-    final ranked = TrackMatcher.rank(await remote.search('${track.title} ${track.artist}'), track);
-    return ranked.isEmpty ? null : ranked.first;
   }
 }
 

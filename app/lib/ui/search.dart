@@ -4,18 +4,19 @@ import 'package:flutter/material.dart' hide Route;
 
 import '../app/app_model.dart';
 import '../app/i18n.dart';
-import '../app/platform_services.dart';
 import '../app/theme.dart';
 import '../core/lyrics.dart';
 import '../core/models.dart';
 import '../core/playback.dart';
 import '../core/recommend.dart';
+import 'add_song.dart';
 import 'components.dart';
 import 'covers.dart';
 import 'library.dart';
 import 'spotify_library.dart';
 
-/// FG-02 Song search (RQ-5, ONRQ-1, ONRQ-11, RQ-17).
+/// FG-02 Song search. The app fetches no lyrics: the main action opens a web search for the
+/// song's LRC ("artist title .lrc") and the add screen, where the copied lyrics are pasted.
 class SearchView extends StatefulWidget {
   final String initialQuery;
   final TrackKey? hint;
@@ -28,9 +29,8 @@ enum _SearchTab { search, spotify }
 
 class _SearchViewState extends State<SearchView> {
   late final _query = TextEditingController(text: widget.initialQuery);
+  /// Local matches only (the demo song in demo mode); the shipped app has none.
   List<LyricsCandidate> results = [];
-  bool isLoading = false;
-  LyricsError? error;
   _SearchTab tab = _SearchTab.search;
   Timer? _debounce;
   int _generation = 0;
@@ -66,43 +66,31 @@ class _SearchViewState extends State<SearchView> {
   Future<void> _search() async {
     final q = _query.text.trim();
     final gen = ++_generation;
-    if (q.isEmpty) {
-      setState(() => results = []);
-      return;
-    }
-    setState(() => isLoading = true);
-    final provider = context.readModel.lyricsProvider;
-    try {
-      // A known track (recommendation, now playing) is also fetched exactly, so it still shows up
-      // when LRCLIB's search is overloaded.
-      final hint = widget.hint;
-      final exactFuture = hint != null && q == widget.initialQuery.trim()
-          ? provider.lyrics(hint).then<LyricsCandidate?>((c) => c, onError: (_) => null)
-          : Future<LyricsCandidate?>.value(null);
-      List<LyricsCandidate> found;
-      try {
-        found = await provider.search(q);
-      } on LyricsError {
-        final exact = await exactFuture;
-        if (exact == null) rethrow;
-        found = [];
-      }
-      final exact = await exactFuture;
-      if (!mounted || gen != _generation) return;
-      setState(() {
-        // One row per song, best lyrics first, at most 20 rows.
-        results = SearchResults.dedupe([?exact, ...found]);
-        error = null;
-      });
-    } on LyricsError catch (e) {
-      if (!mounted || gen != _generation) return;
-      setState(() {
-        results = [];
-        error = e;
-      });
-    } finally {
-      if (mounted && gen == _generation) setState(() => isLoading = false);
-    }
+    final found = q.isEmpty ? <LyricsCandidate>[] : await context.readModel.lyricsProvider.search(q);
+    if (!mounted || gen != _generation) return;
+    setState(() => results = SearchResults.dedupe(found));
+  }
+
+  /// The known track (recommendation, now playing) when the query is still the one it came with.
+  TrackKey? get _hintForQuery {
+    final hint = widget.hint;
+    return hint != null && _query.text.trim() == widget.initialQuery.trim() ? hint : null;
+  }
+
+  /// Opens the web search for the LRC and the add screen, pre-filled, to paste into on return.
+  Future<void> _searchWeb() async {
+    final q = _query.text.trim();
+    if (q.isEmpty) return;
+    final hint = _hintForQuery;
+    final draft = AddSongDraft()
+      ..title = hint?.title ?? q
+      ..artist = hint == null ? '' : TrackNormalizer.primaryArtist(hint.artist)
+      ..album = hint?.album
+      ..duration = hint?.duration;
+    final model = context.readModel;
+    await openLyricsWebSearch(context, title: draft.title, artist: draft.artist);
+    if (!mounted) return;
+    model.push(AddRoute(draft));
   }
 
   void _setQuery(String q) {
@@ -136,7 +124,7 @@ class _SearchViewState extends State<SearchView> {
                   autocorrect: false,
                   autofocus: widget.initialQuery.isEmpty,
                   textInputAction: TextInputAction.search,
-                  onSubmitted: (_) => _search(),
+                  onSubmitted: (_) => _searchWeb(),
                   style: TextStyle(color: t.textPrimary),
                   decoration: InputDecoration(
                     border: InputBorder.none,
@@ -198,7 +186,6 @@ class _SearchViewState extends State<SearchView> {
 
   Widget _content() {
     final model = context.model;
-    final t = context.theme;
     if (tab == _SearchTab.spotify) return _spotifyPlaylists();
     if (_query.text.trim().isEmpty) {
       // Suggestions before searching: easy songs, popular songs and more.
@@ -207,76 +194,57 @@ class _SearchViewState extends State<SearchView> {
         child: CuratedShelvesView(shelves: model.shelves, onSelect: (e, _) => _setQuery('${e.title} ${e.artist}')),
       );
     }
-    if (isLoading && results.isEmpty) return Center(child: CircularProgressIndicator(color: t.textSecondary));
-    if (results.isEmpty) return _noResults();
-    return ListView.builder(padding: const EdgeInsets.symmetric(vertical: 8), itemCount: results.length, itemBuilder: (_, i) => _resultRow(results[i]));
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      children: [_webSearchRow(), for (final c in results) _resultRow(c)],
+    );
   }
 
   /// The user's Spotify playlists, saved albums and liked songs, with cover art.
   Widget _spotifyPlaylists() => const SpotifyLibraryPanel();
 
-  Widget _noResults() {
+  /// The main action: "artist title .lrc" on the web.
+  Widget _webSearchRow() {
     final t = context.theme;
-    final offline = error?.kind == LyricsErrorKind.offline;
-    return Center(
+    final hint = _hintForQuery;
+    final q = LyricsWebSearch.query(title: hint?.title ?? _query.text, artist: hint?.artist ?? '');
+    return InkWell(
+      onTap: _searchWeb,
       child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        child: Row(
           children: [
-            Icon(offline ? Icons.wifi_off : Icons.music_note, size: 40, color: t.textTertiary),
-            const SizedBox(height: 12),
-            Text(
-              offline ? tr('오프라인') : tr('가사를 찾지 못했어요'),
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: t.textPrimary),
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(color: t.surface, borderRadius: BorderRadius.circular(4)),
+              child: Icon(Icons.travel_explore, color: t.textPrimary),
             ),
-            const SizedBox(height: 12),
-            Text(
-              offline
-                  ? tr('검색하려면 인터넷 연결이 필요해요. 가사를 붙여넣어 직접 추가할 수는 있어요.')
-                  : error == null
-                  ? tr('영어 제목이나 원래 언어의 제목으로 다시 검색해 보세요.\n또는 가사를 붙여넣어 직접 추가할 수 있어요.')
-                  : error!.kind == LyricsErrorKind.busy
-                  ? tr('가사 서버(LRCLIB)가 지금 붐벼요. 몇 초 뒤에 다시 시도해 주세요.')
-                  : tr('가사 서버에 연결하지 못했어요 ({0}). 잠시 후 다시 시도해 주세요.', [error!.status ?? error!.kind.name]),
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: t.textSecondary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    tr('인터넷에서 가사 찾기'),
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: t.textPrimary),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    q,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: t.textSecondary),
+                  ),
+                ],
+              ),
             ),
-            if (error != null) ...[
-              const SizedBox(height: 16),
-              TextButton.icon(
-                onPressed: _search,
-                icon: Icon(Icons.refresh, color: t.textPrimary),
-                label: Text(
-                  tr('다시 시도'),
-                  style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w600),
-                ),
-              ),
-            ],
-            if (!offline) ...[
-              const SizedBox(height: 8),
-              TextButton.icon(
-                onPressed: _searchWeb,
-                icon: Icon(Icons.travel_explore, color: t.textPrimary),
-                label: Text(
-                  tr('인터넷에서 가사 찾기'),
-                  style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w600),
-                ),
-              ),
-            ],
+            const SizedBox(width: 8),
+            Icon(Icons.open_in_new, size: 18, color: t.textTertiary),
           ],
         ),
       ),
     );
-  }
-
-  /// Opens a web search for the typed query; the lyrics found there go in through "직접 추가하기".
-  Future<void> _searchWeb() async {
-    try {
-      await Links.open(LyricsWebSearch.url(title: _query.text, word: tr('가사')));
-    } catch (_) {
-      if (mounted) showMessage(context, tr('브라우저를 열지 못했어요.'));
-    }
   }
 
   Widget _resultRow(LyricsCandidate c) {

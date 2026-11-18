@@ -71,7 +71,7 @@ class _AddSongViewState extends State<AddSongView> {
               ),
             ],
           ),
-          // Lyrics LRCLIB doesn't have: find them on the web, copy, come back and paste.
+          // The app fetches no lyrics: find an LRC on the web, copy, come back and paste.
           Wrap(
             spacing: 4,
             children: [
@@ -154,13 +154,7 @@ class _AddSongViewState extends State<AddSongView> {
     );
   }
 
-  Future<void> _searchWeb() async {
-    try {
-      await Links.open(LyricsWebSearch.url(title: _title.text, artist: _artist.text, word: tr('가사')));
-    } catch (_) {
-      if (mounted) showMessage(context, tr('브라우저를 열지 못했어요.'));
-    }
-  }
+  Future<void> _searchWeb() => openLyricsWebSearch(context, title: _title.text, artist: _artist.text);
 
   /// Replaces the lyrics with the clipboard, as copied from a lyrics page.
   Future<void> _paste() async {
@@ -171,6 +165,15 @@ class _AddSongViewState extends State<AddSongView> {
       return;
     }
     setState(() => _lyrics.text = text);
+  }
+}
+
+/// Opens the browser on a web search for the song's LRC lyrics ("artist title .lrc").
+Future<void> openLyricsWebSearch(BuildContext context, {required String title, String artist = ''}) async {
+  try {
+    await Links.open(LyricsWebSearch.url(title: title, artist: artist));
+  } catch (_) {
+    if (context.mounted) showMessage(context, tr('브라우저를 열지 못했어요.'));
   }
 }
 

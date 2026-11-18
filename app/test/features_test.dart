@@ -128,28 +128,6 @@ void main() {
     expect(t.isDark, isFalse);
   });
 
-  group('LRCLIB busy handling', () {
-    test('retries 503 with Retry-After, then succeeds', () async {
-      var calls = 0;
-      final waits = <Duration>[];
-      final c = LRCLIBClient(
-        client: MockClient((_) async => ++calls < 3
-            ? http.Response('{"name":"ServerOverloaded"}', 503, headers: {'retry-after': '1'})
-            : http.Response('[{"id":1,"trackName":"Yellow","artistName":"Coldplay","plainLyrics":"a"}]', 200)),
-        sleep: (d) async => waits.add(d),
-      );
-      final r = await c.search('yellow');
-      expect(r.single.trackName, 'Yellow');
-      expect(calls, 3);
-      expect(waits, [const Duration(seconds: 1), const Duration(milliseconds: 1500)]);
-    });
-
-    test('gives up after the last attempt with a busy error', () async {
-      final c = LRCLIBClient(client: MockClient((_) async => http.Response('', 503)), sleep: (_) async {});
-      await expectLater(c.search('x'), throwsA(isA<LyricsError>().having((e) => e.kind, 'kind', LyricsErrorKind.busy)));
-    });
-  });
-
   test('album slide loops: neighbours on both sides of the first and last album', () {
     expect(carouselOffset(0, 0, 5), 0);
     expect(carouselOffset(4, 0, 5), -1); // left of the first album is the last one
@@ -159,30 +137,21 @@ void main() {
     expect(carouselOffset(0, 0.4, 1), -0.4);
   });
 
-  test('LRCLIB exact lookup retries without album, then with a clean title', () async {
-    final asked = <Map<String, String>>[];
-    final c = LRCLIBClient(
-      client: MockClient((req) async {
-        asked.add(req.url.queryParameters);
-        return req.url.queryParameters['track_name'] == 'The Ocean' && !req.url.queryParameters.containsKey('album_name')
-            ? http.Response('{"id":7,"trackName":"The Ocean","artistName":"Mike Perry","syncedLyrics":"[00:01.00]x"}', 200)
-            : http.Response('{"message":"not found"}', 404);
-      }),
-      sleep: (_) async {},
-    );
-    final r = await c.lyrics(const TrackKey(title: 'The Ocean (feat. Shy Martin)', artist: 'Mike Perry, Shy Martin', album: 'The Ocean', duration: 183.4));
-    expect(r?.id, 7);
-    expect(asked.length, 3);
-    expect(asked.first['album_name'], 'The Ocean');
-    expect(asked.last['duration'], '183');
+  test('titles lose (feat.), [Live] and - Remastered for searching', () {
     expect(TrackNormalizer.cleanTitle('Yesterday - Remastered 2009'), 'Yesterday');
+    expect(TrackNormalizer.cleanTitle('The Ocean (feat. Shy Martin)'), 'The Ocean');
   });
 
-  test('web lyrics search: primary artist, title and the lyrics word; blanks dropped', () {
-    final u = LyricsWebSearch.url(title: ' 晴天 ', artist: 'Jay Chou & Someone', word: '가사');
+  test('web lyrics search: primary artist, title and .lrc; blanks dropped', () {
+    final u = LyricsWebSearch.url(title: ' 晴天 ', artist: 'Jay Chou & Someone');
     expect(u.host, 'www.google.com');
-    expect(u.queryParameters['q'], 'Jay Chou 晴天 가사');
-    expect(LyricsWebSearch.url(title: 'Yellow').queryParameters['q'], 'Yellow lyrics');
+    expect(u.queryParameters['q'], 'Jay Chou 晴天 .lrc');
+    expect(LyricsWebSearch.url(title: 'Yellow').queryParameters['q'], 'Yellow .lrc');
+    expect(LyricsWebSearch.query(title: 'Yellow', artist: 'Coldplay'), 'Coldplay Yellow .lrc');
+  });
+
+  test('the shipped app has no lyrics source to search', () async {
+    expect(await const StaticLyricsProvider([]).search('Yellow Coldplay'), isEmpty);
   });
 
   test('iTunes cover search: same title preferred, art asked at 600 px', () async {

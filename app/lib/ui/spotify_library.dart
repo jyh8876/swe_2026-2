@@ -6,6 +6,7 @@ import '../app/spotify_library.dart';
 import '../app/theme.dart';
 import '../core/lyrics.dart';
 import '../core/playback.dart';
+import 'add_song.dart';
 import 'components.dart';
 import 'covers.dart';
 
@@ -257,7 +258,6 @@ class SpotifyTracksView extends StatefulWidget {
 
 class _SpotifyTracksViewState extends State<SpotifyTracksView> {
   late Future<List<SpotifyTrack>> _tracks = context.readModel.spotifyLibrary.tracks(widget.list);
-  String? _busyID;
 
   @override
   Widget build(BuildContext context) {
@@ -312,7 +312,7 @@ class _SpotifyTracksViewState extends State<SpotifyTracksView> {
               final track = tracks[i - 1];
               final owned = model.collection.existingSong(track.trackKey) != null;
               return InkWell(
-                onTap: _busyID != null ? null : () => _select(track),
+                onTap: () => _select(track),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                   child: Row(children: [
@@ -326,9 +326,7 @@ class _SpotifyTracksViewState extends State<SpotifyTracksView> {
                             maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: t.textTertiary)),
                       ]),
                     ),
-                    if (_busyID == track.id)
-                      SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: t.textSecondary))
-                    else if (owned)
+                    if (owned)
                       Icon(Icons.check_circle, color: t.brand, semanticLabel: tr('이미 추가됨'))
                     else
                       Icon(Icons.add_circle_outline, color: t.textTertiary),
@@ -342,6 +340,8 @@ class _SpotifyTracksViewState extends State<SpotifyTracksView> {
     );
   }
 
+  /// No lyrics lookup: Spotify's names and art fill the add screen, and the web search for the
+  /// LRC opens so the lyrics can be copied and pasted there.
   Future<void> _select(SpotifyTrack track) async {
     final model = context.readModel;
     final existing = model.collection.existingSong(track.trackKey);
@@ -349,31 +349,15 @@ class _SpotifyTracksViewState extends State<SpotifyTracksView> {
       model.push(PlayerRoute(existing.id));
       return;
     }
-    setState(() => _busyID = track.id);
-    LyricsCandidate? found;
-    var failed = false;
-    try {
-      found = await model.lyricsProvider.lyrics(track.trackKey);
-    } catch (_) {
-      failed = true;
-    }
-    if (!mounted) return;
-    setState(() => _busyID = null);
-    final AddSongDraft draft;
-    if (found != null && found.availability != Availability.none) {
-      draft = AddSongDraft.fromCandidate(found);
-    } else {
-      draft = AddSongDraft();
-      showMessage(context, failed ? tr('가사 서버가 붐벼서 가사를 못 불러왔어요. 붙여넣거나 잠시 후 다시 시도해 주세요.') : tr('이 곡의 가사를 찾지 못했어요. 가사를 붙여넣어 추가할 수 있어요.'));
-    }
-    // Spotify's names and album art win over LRCLIB's.
-    draft
+    final draft = AddSongDraft()
       ..title = track.title
       ..artist = TrackNormalizer.primaryArtist(track.artist)
-      ..album = track.album ?? draft.album
-      ..duration = track.duration ?? draft.duration
+      ..album = track.album
+      ..duration = track.duration
       ..coverURL = track.imageUrl
       ..spotifyTrackID = track.id;
+    await openLyricsWebSearch(context, title: draft.title, artist: draft.artist);
+    if (!mounted) return;
     model.push(AddRoute(draft));
   }
 }

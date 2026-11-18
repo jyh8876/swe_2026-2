@@ -254,7 +254,7 @@ class _SettingsViewState extends State<SettingsView> {
           _row(tr('버전'), trailing: '0.14.0 (${Platform.isIOS ? 'iOS' : 'Android'})'),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-            child: Text(tr('가사는 LRCLIB에서 가져와요. 컬렉션은 이 기기에만 저장되고, 가사는 선택한 번역 엔진으로만 전송돼요.'),
+            child: Text(tr('가사는 인터넷에서 찾아 직접 붙여넣어요. 컬렉션은 이 기기에만 저장되고, 가사는 선택한 번역 엔진으로만 전송돼요.'),
                 style: TextStyle(fontSize: 12, color: t.textTertiary)),
           ),
         ]),
