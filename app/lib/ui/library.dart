@@ -658,22 +658,64 @@ class _StackViewState extends State<_StackView> with SingleTickerProviderStateMi
         child: Transform(
           alignment: Alignment.center,
           transform: m,
-          child: Semantics(
-            button: true,
-            label: tr('{0}, {1} 재생', [song.title, song.artist]),
-            child: GestureDetector(
-              onTap: () => d.abs() < 0.5 ? _play(i) : _settle(i.toDouble()),
-              onLongPress: () => showSongMenu(context, song),
-              child: Container(
-                decoration: BoxDecoration(border: Border.all(color: Colors.white.withValues(alpha: 0.6), width: 1)),
-                child: AlbumPlate(song: song, size: card, translating: model.isTranslating(song.id), shadow: const []),
+          // An LP is a slab, not a sheet: back face and four edges behind the cover (Notion 11/19).
+          child: Stack(clipBehavior: Clip.none, children: [
+            ..._slab(card),
+            Semantics(
+              button: true,
+              label: tr('{0}, {1} 재생', [song.title, song.artist]),
+              child: GestureDetector(
+                onTap: () => d.abs() < 0.5 ? _play(i) : _settle(i.toDouble()),
+                onLongPress: () => showSongMenu(context, song),
+                child: Container(
+                  decoration: BoxDecoration(border: Border.all(color: Colors.white.withValues(alpha: 0.6), width: 1)),
+                  child: AlbumPlate(song: song, size: card, translating: model.isTranslating(song.id), shadow: const []),
+                ),
               ),
             ),
-          ),
+          ]),
         ),
       ),
     );
   }
+}
+
+// ─────────────── LP slab ───────────────
+
+/// Thickness of a record in its sleeve, as a share of the cover size. A real LP jacket is about
+/// 1 % of its width; a little more reads as a record at phone size.
+const _slabDepth = 0.045;
+
+/// The back face and the four edges of an LP of [card] size, standing behind a cover drawn at
+/// z = 0 (further away is +z, as in the stack's camera). Painted before the cover.
+List<Widget> _slab(double card) {
+  final th = card * _slabDepth;
+  const edge = Color(0xFFE6E7EB), rim = Color(0xFFC9CBD1);
+  Widget face(double w, double h, Matrix4 m, {Gradient? g}) => Positioned(
+        left: (card - w) / 2,
+        top: (card - h) / 2,
+        width: w,
+        height: h,
+        child: Transform(
+          alignment: Alignment.center,
+          transform: m,
+          child: DecoratedBox(decoration: BoxDecoration(color: g == null ? edge : null, gradient: g)),
+        ),
+      );
+  // Paper edge of the sleeve with the black rim of the record showing through the middle.
+  const side = LinearGradient(colors: [edge, rim, Color(0xFF1A1A1E), rim, edge], stops: [0, 0.38, 0.5, 0.62, 1]);
+  return [
+    face(card, card, Matrix4.identity()..translateByDouble(0.0, 0.0, th, 1.0), g: LinearGradient(colors: [Colors.white.withValues(alpha: 0.18), Colors.white.withValues(alpha: 0.08)])),
+    face(th, card, Matrix4.identity()..translateByDouble(card / 2, 0.0, th / 2, 1.0)..rotateY(pi / 2), g: side),
+    face(th, card, Matrix4.identity()..translateByDouble(-card / 2, 0.0, th / 2, 1.0)..rotateY(pi / 2), g: side),
+    face(card, th, Matrix4.identity()..translateByDouble(0.0, -card / 2, th / 2, 1.0)..rotateX(pi / 2), g: side.withRotation()),
+    face(card, th, Matrix4.identity()..translateByDouble(0.0, card / 2, th / 2, 1.0)..rotateX(pi / 2), g: side.withRotation()),
+  ];
+}
+
+extension on LinearGradient {
+  /// The same bands across the short side of a horizontal edge.
+  LinearGradient withRotation() => LinearGradient(colors: colors, stops: stops, begin: Alignment.topCenter, end: Alignment.bottomCenter);
 }
 
 // ─────────────── Grid (Figma 01 홈 · 라이브러리) ───────────────
