@@ -29,12 +29,12 @@ void main() {
         ],
       };
 
-  test('picks the newest stable Flash, before Flash-Lite, previews and special models', () {
+  test('picks the newest stable Flash-Lite, before Flash, previews and special models', () {
     expect(
         GeminiEngine.pickModel(['gemini-2.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.8-flash-preview-09-2026', 'gemini-2.5-flash-image', 'gemini-2.5-pro']),
-        'gemini-3.5-flash');
+        'gemini-3.5-flash-lite');
     expect(GeminiEngine.rankModels(['gemini-2.5-flash-lite', 'gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-2.5-flash']),
-        ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash-lite']);
+        ['gemini-3.5-flash-lite', 'gemini-2.5-flash-lite', 'gemini-3.8-flash', 'gemini-2.5-flash']);
     expect(GeminiEngine.pickModel(['gemini-flash-latest', 'gemini-2.5-pro']), 'gemini-flash-latest');
     expect(GeminiEngine.pickModel(['gemini-2.5-pro']), isNull);
   });
@@ -92,22 +92,31 @@ void main() {
     expect(bodies.last['generationConfig']['maxOutputTokens'], 4196);
   });
 
-  test('closed (404) and overloaded (503) models are skipped; the one that answers is kept', () async {
+  test('closed (404) and overloaded (503) models are skipped and rested; the one that answers is kept', () async {
     final asked = <String>[];
+    var liteBusy = true;
+    var t = DateTime(2026, 11, 19, 12);
+    GeminiEngine.now = () => t;
+    addTearDown(() => GeminiEngine.now = DateTime.now);
     final e = GeminiEngine('k404', client: MockClient((r) async {
-      if (r.method == 'GET') return json(models(['gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-3.5-flash-lite']));
+      if (r.method == 'GET') return json(models(['gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash-lite']));
       final model = r.url.pathSegments.last.split(':').first;
       asked.add(model);
+      if (model == 'gemini-3.5-flash-lite' && liteBusy) return json({'error': {'code': 503, 'status': 'UNAVAILABLE'}}, 503);
       if (model == 'gemini-3.8-flash') return json({'error': {'code': 503, 'status': 'UNAVAILABLE'}}, 503);
-      if (model == 'gemini-2.5-flash') return json({'error': {'code': 404, 'message': 'no longer available to new users'}}, 404);
+      if (model.startsWith('gemini-2.5')) return json({'error': {'code': 404, 'message': 'no longer available to new users'}}, 404);
       return json(answer('{"x":1}'));
     }));
-    expect(await e.complete(system: 's', user: 'u', maxTokens: 50), '{"x":1}');
-    expect(asked, ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.5-flash-lite']);
-    expect(e.currentModel, 'gemini-3.5-flash-lite');
+    // Every model fails: all are tried, and the busy answer (503) is reported, not the 404.
+    await expectLater(e.complete(system: 's', user: 'u', maxTokens: 50), throwsA(isA<LLMError>().having((x) => x.status, 'status', 503)));
+    expect(asked, ['gemini-3.5-flash-lite', 'gemini-2.5-flash-lite', 'gemini-3.8-flash', 'gemini-2.5-flash']);
+    // A minute later Flash-Lite recovers; resting models are still tried, but last.
+    liteBusy = false;
     asked.clear();
-    await e.complete(system: 's', user: 'u', maxTokens: 50);
+    t = t.add(const Duration(minutes: 1));
+    expect(await e.complete(system: 's', user: 'u', maxTokens: 50), '{"x":1}');
     expect(asked, ['gemini-3.5-flash-lite']);
+    expect(e.currentModel, 'gemini-3.5-flash-lite');
   });
 
   test('a cut-off answer with no text is an error, not an empty success', () async {

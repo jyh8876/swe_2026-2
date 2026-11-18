@@ -102,7 +102,9 @@ class LLMError implements Exception {
         LLMErrorKind.invalidKey => 'API 키가 올바르지 않아요. 설정에서 확인해 주세요.',
         LLMErrorKind.outOfCredit => 'API 계정의 크레딧이 부족해요.',
         LLMErrorKind.rateLimited => '요청이 많아 잠시 후 다시 시도해요.',
-        LLMErrorKind.server => '서버 오류가 발생했어요 ($status).',
+        LLMErrorKind.server => status == 503 || status == 504
+            ? 'AI 서버가 지금 붐벼요. 잠시 후 다시 시도해 주세요 ($status).'
+            : '서버 오류가 발생했어요 ($status).',
         LLMErrorKind.network => '인터넷에 연결되어 있지 않아요.',
         LLMErrorKind.malformedOutput => '번역 결과를 확인하지 못했어요. 다시 시도해 주세요.',
         LLMErrorKind.refused => '현재 엔진에서는 이 해설을 제공할 수 없어요.',
@@ -692,6 +694,11 @@ class GeminiEngine extends CloudChatEngine {
   static final _candidates = <String, List<String>>{};
   static final _working = <String, String>{};
 
+  /// Models that just failed for a key, until when to skip them: a 404 (closed to this key) for a
+  /// day, an overloaded or hanging model for a few minutes.
+  static final _resting = <String, Map<String, DateTime>>{};
+  static DateTime Function() now = DateTime.now;
+
   final String? _fixedModel;
 
   GeminiEngine(String apiKey, {String? model, http.Client? client})
@@ -709,15 +716,16 @@ class GeminiEngine extends CloudChatEngine {
 
   Map<String, String> get _headers => {'x-goog-api-key': apiKey, 'content-type': 'application/json'};
 
-  /// Stable Flash and Flash-Lite models from [names], best first: Flash before Flash-Lite, then
-  /// the higher version. Previews, experiments, aliases and special-purpose models (image, audio,
+  /// Stable Flash and Flash-Lite models from [names], best first: Flash-Lite before Flash (Flash
+  /// models answer 503 or hang for most free keys, while Flash-Lite answers), then the higher
+  /// version. Previews, experiments, aliases and special-purpose models (image, audio,
   /// live, TTS) are left out.
   static List<String> rankModels(Iterable<String> names) {
     final re = RegExp(r'^gemini-(\d+(?:\.\d+)?)-flash(-lite)?(?:-(\d{3}))?$');
     final found = <(double, int, int, String)>[];
     for (final n in names) {
       final m = re.firstMatch(n);
-      if (m != null) found.add((double.parse(m.group(1)!), m.group(2) == null ? 1 : 0, m.group(3) == null ? 1 : 0, n));
+      if (m != null) found.add((double.parse(m.group(1)!), m.group(2) == null ? 0 : 1, m.group(3) == null ? 1 : 0, n));
     }
     found.sort((a, b) => a.$2 != b.$2 ? b.$2 - a.$2 : (a.$1 != b.$1 ? b.$1.compareTo(a.$1) : b.$3 - a.$3));
     return [for (final f in found) f.$4];
@@ -796,10 +804,21 @@ class GeminiEngine extends CloudChatEngine {
   static bool _tryNext(LLMError e) =>
       e.kind == LLMErrorKind.network || (e.kind == LLMErrorKind.server && const {404, 500, 503, 504}.contains(e.status));
 
+  void _rest(String model, LLMError e) {
+    final d = e.status == 404 ? const Duration(days: 1) : const Duration(minutes: 5);
+    (_resting[apiKey] ??= {})[model] = now().add(d);
+  }
+
+  bool _isResting(String model) {
+    final until = _resting[apiKey]?[model];
+    return until != null && now().isBefore(until);
+  }
+
   @override
   Future<void> verifyKey() async {
     _candidates.remove(apiKey);
     _working.remove(apiKey);
+    _resting.remove(apiKey);
     await _models();
   }
 
@@ -808,16 +827,20 @@ class GeminiEngine extends CloudChatEngine {
     if (apiKey.isEmpty) throw LLMError.missingAPIKey;
     final models = await _models();
     final working = _working[apiKey];
-    final order = [?working, ...models.where((m) => m != working)];
+    final all = [?working, ...models.where((m) => m != working)];
+    // Resting models go last instead of being dropped, so a key with only busy models still tries.
+    final order = [...all.where((m) => !_isResting(m)), ...all.where(_isResting)];
     LLMError? last;
-    for (final model in order.take(6)) {
+    for (final model in order) {
       try {
         final text = await _ask(model, system, user, maxTokens);
         if (_fixedModel == null) _working[apiKey] = model;
         return text;
       } on LLMError catch (e) {
         if (!_tryNext(e)) rethrow;
-        last = e;
+        // Report the most telling failure: a busy model (503) over one that is closed (404).
+        if (last == null || last.status == 404) last = e;
+        if (_fixedModel == null) _rest(model, e);
         if (_working[apiKey] == model) _working.remove(apiKey);
       }
     }
@@ -854,7 +877,7 @@ class GeminiEngine extends CloudChatEngine {
                   },
                 }))
             // A busy model can hang instead of answering 503; give up and try the next one.
-            .timeout(const Duration(seconds: 45));
+            .timeout(const Duration(seconds: 40));
       } catch (_) {
         throw LLMError.network;
       }
