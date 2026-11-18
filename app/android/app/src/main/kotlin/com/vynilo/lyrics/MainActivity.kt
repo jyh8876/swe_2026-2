@@ -15,6 +15,7 @@ class MainActivity : FlutterActivity() {
     private var links: MethodChannel? = null
     private var pendingLink: String? = null
     private var spotifyRemote: SpotifyRemoteBridge? = null
+    private var mediaSessions: MediaSessionBridge? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -22,6 +23,9 @@ class MainActivity : FlutterActivity() {
 
         // Spotify App Remote SDK: plays through the installed Spotify app in the background.
         spotifyRemote = SpotifyRemoteBridge(this, messenger)
+
+        // Spotify (or any music app) through the system media sessions; needs notification access.
+        mediaSessions = MediaSessionBridge(applicationContext, messenger)
 
         // On-device llama.cpp (Gemma 4 E2B). All calls run on one background thread.
         MethodChannel(messenger, "vynilo/llama").setMethodCallHandler { call, result ->
@@ -89,6 +93,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         spotifyRemote?.dispose()
+        mediaSessions?.stop()
         super.onDestroy()
     }
 

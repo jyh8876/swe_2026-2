@@ -496,12 +496,12 @@ class MusicApp {
   static const _channel = MethodChannel('vynilo/media_session');
   static const events = EventChannel('vynilo/media_session/state');
 
-  /// Off since 0.13.0: Play Protect blocks sideloaded APKs that declare a notification listener,
-  /// so the Android side (`MediaSessionBridge.kt` and its manifest service, see commit 1198b8d)
-  /// was removed. Songs without Spotify follow tap to sync instead. Tests set this to run the
-  /// Dart path.
+  /// On for Android again (Play Store builds): `MediaSessionBridge.kt` follows and controls
+  /// Spotify (preferred) or another music app once notification access is granted. Play Protect
+  /// may warn about sideloaded APKs that declare a notification listener. Tests set this to run
+  /// the Dart path on the desktop.
   static bool? debugSupported;
-  static bool get supported => debugSupported ?? false;
+  static bool get supported => debugSupported ?? Platform.isAndroid;
 
   static Future<bool> hasAccess() async {
     if (!supported) return false;

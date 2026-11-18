@@ -36,6 +36,18 @@
                 <data android:scheme="vynilo" android:host="spotify-callback"/>
             </intent-filter>
         </activity>
+        <!-- Notification access, granted by the user, lets the app follow and control music apps'
+             media sessions (Spotify first): now playing, position, play/pause/seek/skip.
+             Notifications themselves are not read. -->
+        <service
+            android:name=".MediaListenerService"
+            android:label="Vinylo"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService"/>
+            </intent-filter>
+        </service>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
@@ -48,6 +60,14 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <!-- Spotify, and music apps that can "play from search" (starting a song in another app). -->
+        <package android:name="com.spotify.music"/>
+        <intent>
+            <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH"/>
+        </intent>
+        <intent>
+            <action android:name="android.media.browse.MediaBrowserService"/>
+        </intent>
         <intent>
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="https"/>
