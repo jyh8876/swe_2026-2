@@ -139,6 +139,21 @@ class CollectionSnapshot {
     touch();
   }
 
+  /// Replaces a song's lyrics (song edit). Lines whose text is unchanged at the same position
+  /// keep their translations, explanations and saved state; the rest start over.
+  void replaceLyrics(String songID, LyricsDocument doc) {
+    final old = {for (final l in linesFor(songID)) l.index: l.text};
+    final fresh = doc.lyricLines(songID);
+    final same = {for (final l in fresh) if (old[l.index] == l.text) l.index};
+    lines.removeWhere((l) => l.songID == songID);
+    lines.addAll(fresh);
+    translations.removeWhere((t) => t.songID == songID && !same.contains(t.index));
+    explanations.removeWhere((e) => e.songID == songID && !same.contains(e.index));
+    phrases.removeWhere((p) => p.songID == songID && !same.contains(p.index));
+    updateSong(songID, (s) => s.lyricsType = doc.type);
+    touch();
+  }
+
   /// Deleting a song asks whether to keep its saved phrases (default: keep, RQ-12).
   /// Kept phrases keep their line and translation data so they still render.
   void deleteSong(String id, {bool keepPhrases = true}) {

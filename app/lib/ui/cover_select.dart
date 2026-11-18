@@ -173,7 +173,7 @@ class _CoverSelectViewState extends State<CoverSelectView> {
   Widget build(BuildContext context) {
     final t = context.theme;
     return Scaffold(
-      appBar: AppBar(title: Text(tr('커버 이미지 선택')), centerTitle: true),
+      appBar: AppBar(title: Text(tr('커버 이미지 추가')), centerTitle: true),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
         children: [
@@ -288,19 +288,15 @@ class _CoverSelectViewState extends State<CoverSelectView> {
                       children: [
                         ColoredBox(color: t.surfaceRaised),
                         child,
+                        // Figma: a small white "변경" pill at the bottom right of a picked photo.
                         if (change)
                           Positioned(
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
+                            right: 6,
+                            bottom: 6,
                             child: Container(
-                              color: Colors.black54,
-                              padding: const EdgeInsets.symmetric(vertical: 3),
-                              child: Text(
-                                tr('변경'),
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white),
-                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(6)),
+                              child: Text(tr('변경'), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF1B1C1F))),
                             ),
                           ),
                       ],
@@ -357,9 +353,10 @@ class _CoverSelectViewState extends State<CoverSelectView> {
               label: tr('핀터레스트'),
               selected: _source == CoverSource.pinterest,
               onTap: _onPinterest,
-              external: true,
               change: _pinterestPath != null,
-              child: _pinterestPath != null ? Image.file(File(_pinterestPath!), fit: BoxFit.cover) : Icon(Icons.push_pin_outlined, color: t.textSecondary),
+              child: _pinterestPath != null
+                  ? Image.file(File(_pinterestPath!), fit: BoxFit.cover)
+                  : Center(child: Image.asset('assets/brand/ic_pinterest.png', width: 24, height: 24, color: t.textSecondary)),
             ),
           ],
         ),

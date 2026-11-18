@@ -308,6 +308,8 @@ class AppModel extends ChangeNotifier {
       snap = CollectionSnapshot();
     }
     final shelves = CuratedShelf.parseFile(await rootBundle.loadString('assets/curated_shelves.json'));
+    // People updating from a version without onboarding already use the app: skip it for them.
+    if (!settings.hasOnboarded && snap.songs.isNotEmpty) settings.hasOnboarded = true;
     return AppModel._(
       repository: repo,
       secureStore: secure,
@@ -589,14 +591,30 @@ class AppModel extends ChangeNotifier {
     _toServer((api, token) => api.setConquered(token, songID, at));
   }
 
-  /// Changes a song's title and artist (lyrics stay, so translations keep their lines).
-  void editSong(String songID, {required String title, required String artist}) {
+  /// Song edit (Figma "가사 수정"): title, artist and, when given, new lyrics and translation
+  /// language. Changed lines and a new language are translated again; unchanged lines keep theirs.
+  void editSong(String songID, {required String title, required String artist, String? lyrics, String? targetLanguage, bool setTarget = false}) {
     final ti = title.trim(), ar = artist.trim();
     if (ti.isEmpty || ar.isEmpty) return;
-    _mutate((s) => s.updateSong(songID, (song) {
-          song.title = ti;
-          song.artist = ar;
-        }));
+    final before = collection.song(songID);
+    if (before == null) return;
+    final lyricsChanged = lyrics != null && lyrics.trim().isNotEmpty && lyrics.trim() != LRCParser.format(collection.linesFor(songID)).trim();
+    final targetChanged = setTarget && targetLanguage != before.targetLanguage;
+    if (lyricsChanged || targetChanged) _jobs.remove(songID)?.cancel();
+    _mutate((s) {
+      s.updateSong(songID, (song) {
+        song.title = ti;
+        song.artist = ar;
+        if (targetChanged) song.targetLanguage = targetLanguage;
+      });
+      if (lyricsChanged) {
+        s.replaceLyrics(songID, LRCParser.parse(lyrics));
+        for (final l in s.lines.where((l) => l.songID == songID)) {
+          l.detectedLanguage = LanguageGuess.detect(l.text);
+        }
+      }
+    });
+    if (lyricsChanged || targetChanged) startTranslation(songID);
     final song = collection.song(songID);
     if (song != null) _toServer((api, token) => api.putSong(token, songID: songID, title: ti, artist: ar, addedAt: song.addedAt));
   }

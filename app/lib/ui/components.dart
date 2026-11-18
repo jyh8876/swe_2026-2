@@ -488,8 +488,12 @@ Future<T?> showActionSheet<T>(BuildContext context,
     useRootNavigator: true,
     backgroundColor: t.surface,
     showDragHandle: true,
+    // Long menus (the song menu has eight items) scroll instead of overflowing short screens.
+    isScrollControlled: true,
+    constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
     builder: (ctx) => SafeArea(
-      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      child: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (title != null)
           Padding(
             padding: EdgeInsets.fromLTRB(24, 0, 24, 4),
@@ -508,7 +512,8 @@ Future<T?> showActionSheet<T>(BuildContext context,
             onTap: () => Navigator.pop(ctx, a.value),
           ),
         SizedBox(height: 8),
-      ]),
+        ]),
+      ),
     ),
   );
 }
@@ -556,3 +561,79 @@ Future<bool> confirmMusicAppAccess(BuildContext context) => confirmDialog(
       message: tr('지금 듣는 곡과 재생 위치를 읽으려면 Android의 \'알림 접근\' 권한이 필요해요. 다음 화면에서 Vinylo를 켜 주세요. 알림 내용은 읽거나 저장하지 않아요.'),
       confirm: tr('설정 열기'),
     );
+
+// ─────────────── Translation language (Figma 160:4943 "번역 언어 설정") ───────────────
+
+/// A filled select box; tapping opens the "번역 언어 설정" sheet. [value] null = the app's
+/// language ("기본").
+class LanguageSelectField extends StatelessWidget {
+  final String? value;
+  final Language appTarget;
+  final ValueChanged<String?> onChanged;
+  const LanguageSelectField({super.key, required this.value, required this.appTarget, required this.onChanged});
+
+  String _label(String? code) =>
+      code == null ? tr('{0}(기본)', [appTarget.nativeName]) : Language.supported.firstWhere((l) => l.code == code, orElse: () => appTarget).nativeName;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    return Material(
+      color: t.surface,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () async {
+          final picked = await _pick(context);
+          if (picked != null) onChanged(picked.isEmpty ? null : picked);
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          child: Row(children: [
+            Expanded(child: Text(_label(value), style: TextStyle(fontSize: 15, color: t.textPrimary))),
+            Icon(Icons.keyboard_arrow_down, color: t.textSecondary),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// '' = the default, a language code otherwise; null when dismissed.
+  Future<String?> _pick(BuildContext context) {
+    final t = context.theme;
+    final options = <(String, String)>[
+      ('', _label(null)),
+      for (final l in Language.supported.where((l) => l.code != appTarget.code)) (l.code, l.nativeName),
+    ];
+    return showModalBottomSheet<String>(
+      context: context,
+      useRootNavigator: true,
+      showDragHandle: true,
+      backgroundColor: t.surfaceRaised,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 8, 8),
+            child: Row(children: [
+              Expanded(child: Text(tr('번역 언어 설정'), style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: t.textPrimary))),
+              IconButton(tooltip: tr('닫기'), icon: Icon(Icons.close, color: t.textPrimary), onPressed: () => Navigator.pop(ctx)),
+            ]),
+          ),
+          Flexible(
+            child: ListView(shrinkWrap: true, children: [
+              for (final (code, label) in options)
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+                  title: Text(label, style: TextStyle(fontSize: 16, color: t.textPrimary)),
+                  trailing: (value ?? '') == code ? const Icon(Icons.check, color: Color(0xFF3B82F6)) : null,
+                  onTap: () => Navigator.pop(ctx, code),
+                ),
+            ]),
+          ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+  }
+}

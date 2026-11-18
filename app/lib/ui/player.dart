@@ -14,6 +14,7 @@ import '../core/playback.dart';
 import 'components.dart';
 import 'line_detail.dart';
 import 'player_controls.dart';
+import 'library.dart' show askDelete;
 import 'song_actions.dart';
 
 /// FG-06 Player · Lyrics, following the UI prototype (Figma 06 플레이어 · 가사 v2):
@@ -188,7 +189,7 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
         IconButton(
           tooltip: tr('더보기'),
           onPressed: () => _menu(model, song, lines),
-          icon: const Icon(Icons.more_horiz_rounded, color: PlayerPalette.fg),
+          icon: const Icon(Icons.more_vert_rounded, color: PlayerPalette.fg),
         ),
         const SizedBox(width: 8),
       ]),
@@ -621,6 +622,8 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
           SheetAction(tr('정복 취소'), 'unconquer', icon: Icons.undo)
         else
           SheetAction(tr('이 노래 정복!'), 'conquer', icon: Icons.emoji_events_outlined, enabled: canConquer),
+        // Figma 248:1806: "노래 삭제" in red at the end of the player menu.
+        SheetAction(tr('노래 삭제'), 'delete', icon: Icons.delete_outline, destructive: true),
       ],
     );
     if (!mounted) return;
@@ -635,6 +638,8 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
         await _timing(model, song, lines);
       case 'quiz':
         openSongQuiz(context, song);
+      case 'delete':
+        if (await askDelete(context, song) != null) model.pop();
       case 'wrong':
         model.push(SearchRoute('${song.title} ${song.artist}'));
       case 'retranslate':

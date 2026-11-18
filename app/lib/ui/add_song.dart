@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart' hide Route;
-import 'package:flutter/services.dart';
 
 import '../app/app_model.dart';
 import '../app/i18n.dart';
 import '../app/theme.dart';
 import '../core/llm.dart';
-import '../core/lyrics.dart';
 import '../core/models.dart';
 import 'components.dart';
 import 'lyrics_browser.dart';
@@ -24,8 +22,7 @@ class _AddSongViewState extends State<AddSongView> {
   late final _artist = TextEditingController(text: widget.draft.artist);
   late final _lyrics = TextEditingController(text: widget.draft.lyrics);
 
-  /// Keep the time tags of synced lyrics (on by default when the text has them).
-  bool _keepSync = true;
+  final _tip = GlobalKey<TooltipState>();
 
   /// Translation language for this song; null = the app setting ("기본").
   late String? _target = widget.draft.targetLanguage;
@@ -44,7 +41,6 @@ class _AddSongViewState extends State<AddSongView> {
   Widget build(BuildContext context) {
     final t = context.theme;
     final model = context.model;
-    final synced = _lyrics.text.isNotEmpty && LRCParser.parse(_lyrics.text).type == LyricsType.synced;
     final appTarget = model.target;
     return Scaffold(
       appBar: AppBar(title: Text(tr('노래 추가')), centerTitle: true),
@@ -59,63 +55,64 @@ class _AddSongViewState extends State<AddSongView> {
           const SizedBox(height: 8),
           OutlinedField(controller: _artist, hint: '아티스트명을 입력해주세요.', onChanged: (_) => setState(() {})),
           const SizedBox(height: 18),
-          Row(
-            children: [
-              SectionLabel(tr('가사')),
-              const Spacer(),
-              Text(tr('싱크 가사'), style: TextStyle(fontSize: 12, color: synced ? t.textSecondary : t.textTertiary)),
-              const SizedBox(width: 4),
-              Transform.scale(
-                scale: 0.8,
-                child: Switch(value: synced && _keepSync, onChanged: synced ? (v) => setState(() => _keepSync = v) : null),
+          // Figma 03 (377:28232): "가사 ⓘ", the lyrics search chip once a title is in, the text area.
+          Row(children: [
+            SectionLabel(tr('가사')),
+            const SizedBox(width: 2),
+            Tooltip(
+              key: _tip,
+              triggerMode: TooltipTriggerMode.tap,
+              showDuration: const Duration(seconds: 4),
+              preferBelow: false,
+              message: tr('가사를 붙여넣어 주세요.\nLRC 가사를 넣으면 노래에 맞춰 자동으로 넘어가요.'),
+              child: Padding(padding: const EdgeInsets.all(4), child: Icon(Icons.info_outline, size: 16, color: t.textTertiary)),
+            ),
+          ]),
+          if (_title.text.trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Material(
+                color: t.surface,
+                shape: const StadiumBorder(),
+                child: InkWell(
+                  customBorder: const StadiumBorder(),
+                  onTap: _searchWeb,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 9, 12, 9),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Flexible(
+                        child: Text(
+                          [_title.text.trim(), _artist.text.trim()].where((x) => x.isNotEmpty).join(' – '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 14, color: t.textPrimary),
+                        ),
+                      ),
+                      Text(' ${tr('가사 검색')}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: t.textPrimary)),
+                      const SizedBox(width: 6),
+                      Icon(Icons.north_east, size: 16, color: t.textPrimary),
+                    ]),
+                  ),
+                ),
               ),
-            ],
-          ),
-          // The app fetches no lyrics: the user finds an LRC in the in-app browser and takes it, or pastes.
-          Wrap(
-            spacing: 4,
-            children: [
-              _lyricsAction(Icons.travel_explore, tr('인터넷에서 가사 찾기'), _title.text.trim().isEmpty ? null : _searchWeb),
-              _lyricsAction(Icons.content_paste, tr('붙여넣기'), _paste),
-            ],
-          ),
-          const SizedBox(height: 4),
+            ),
+          ],
+          const SizedBox(height: 8),
           OutlinedField(
             controller: _lyrics,
-            hint: tr('이곳에 가사를 붙여넣어 주세요.\n[00:12.34] 형식의 LRC 가사도 인식해요'),
+            hint: tr('이곳에 가사를 붙여넣어 주세요.'),
             minLines: 10,
             maxLines: null,
             style: TextStyle(color: t.textPrimary, fontSize: 13, fontFamily: 'monospace', height: 1.4),
             onChanged: (_) => setState(() {}),
           ),
-          if (synced && !_keepSync)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(tr('시간 정보를 빼고 일반 가사로 저장해요'), style: TextStyle(fontSize: 12, color: t.textTertiary)),
-            ),
           const SizedBox(height: 18),
           SectionLabel(tr('번역 언어')),
           const SizedBox(height: 8),
-          DropdownButtonFormField<String?>(
-            initialValue: _target,
-            isExpanded: true,
-            dropdownColor: t.surfaceRaised,
-            style: TextStyle(color: t.textPrimary, fontSize: 16),
-            decoration: InputDecoration(
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: t.stroke),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: t.textSecondary),
-              ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            ),
-            items: [
-              DropdownMenuItem<String?>(value: null, child: Text(tr('{0}(기본)', [appTarget.nativeName]))),
-              for (final l in Language.supported.where((l) => l.code != appTarget.code)) DropdownMenuItem<String?>(value: l.code, child: Text(l.nativeName)),
-            ],
+          LanguageSelectField(
+            value: _target,
+            appTarget: appTarget,
             onChanged: (v) => setState(() => _target = v),
           ),
         ],
@@ -131,48 +128,19 @@ class _AddSongViewState extends State<AddSongView> {
 
   void _toCover() {
     FocusScope.of(context).unfocus();
-    final synced = LRCParser.parse(_lyrics.text).type == LyricsType.synced;
     widget.draft
       ..title = _title.text.trim()
       ..artist = _artist.text.trim()
-      ..lyrics = synced && !_keepSync ? LRCParser.parse(_lyrics.text).lines.map((l) => l.text).join('\n') : _lyrics.text
+      ..lyrics = _lyrics.text
       ..targetLanguage = _target;
     context.readModel.push(CoverSelectRoute(widget.draft));
-  }
-
-  Widget _lyricsAction(IconData icon, String label, VoidCallback? onPressed) {
-    final t = context.theme;
-    final color = onPressed == null ? t.textTertiary : t.textPrimary;
-    return TextButton.icon(
-      onPressed: onPressed,
-      style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), visualDensity: VisualDensity.compact),
-      icon: Icon(icon, size: 18, color: color),
-      label: Text(
-        label,
-        style: TextStyle(fontSize: 13, color: color, fontWeight: FontWeight.w600),
-      ),
-    );
   }
 
   /// In-app browser on the LRC search; the lyrics taken there fill the field.
   Future<void> _searchWeb() async {
     final lyrics = await openLyricsBrowser(context, title: _title.text, artist: _artist.text);
     if (!mounted || lyrics == null || lyrics.trim().isEmpty) return;
-    setState(() {
-      _lyrics.text = lyrics.trim();
-      _keepSync = true;
-    });
-  }
-
-  /// Replaces the lyrics with the clipboard, as copied from a lyrics page.
-  Future<void> _paste() async {
-    final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text?.trim() ?? '';
-    if (!mounted) return;
-    if (text.isEmpty) {
-      showMessage(context, tr('클립보드가 비어 있어요.'));
-      return;
-    }
-    setState(() => _lyrics.text = text);
+    setState(() => _lyrics.text = lyrics.trim());
   }
 }
 

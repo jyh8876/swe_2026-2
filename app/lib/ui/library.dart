@@ -731,11 +731,17 @@ class _Grid extends StatelessWidget {
     return LayoutBuilder(builder: (context, c) {
       final w = (c.maxWidth - 40 - 16) / 2;
       final plate = w * 0.86;
+      final ts = MediaQuery.textScalerOf(context);
       return CustomScrollView(slivers: [
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
           sliver: SliverGrid(
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 16, mainAxisSpacing: 20, mainAxisExtent: plate + 8 + 22 + 2 + 18 + 8 + 22),
+            // Text rows grow with the system font size, so the cell height does too (no overflow).
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 20,
+                mainAxisExtent: plate + 8 + ts.scale(22) + 2 + ts.scale(18) + 8 + ts.scale(24) + 6),
             delegate: SliverChildBuilderDelegate(childCount: songs.length + 1, (_, i) {
               // Figma: the dashed "노래 추가" tile comes first.
               if (i == 0) {

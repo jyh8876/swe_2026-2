@@ -9,6 +9,7 @@ import 'ui/cover_select.dart';
 import 'ui/components.dart';
 import 'ui/library.dart';
 import 'ui/mini_player.dart';
+import 'ui/onboarding.dart';
 import 'ui/phrase_box.dart';
 import 'ui/player.dart';
 import 'ui/quiz.dart';
@@ -68,8 +69,8 @@ class _LyricsTranslatorAppState extends State<LyricsTranslatorApp> with WidgetsB
               theme: theme,
               child: AnnotatedRegion<SystemUiOverlayStyle>(value: theme.isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark, child: child!),
             ),
-            // No login: lyrics follow any music app; Spotify can be connected in 마이페이지.
-            home: const MainTabView(),
+            // First run: sign-in and the Gemini key (Figma 00 to 00-4); then the tabs.
+            home: widget.model.settings.hasOnboarded ? const MainTabView() : const OnboardingFlow(),
           );
         },
       ),

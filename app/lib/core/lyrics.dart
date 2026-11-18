@@ -26,6 +26,14 @@ class LyricsDocument {
 
 /// LRC parsing (SSRD A.III `parseLRC`, RQ-6).
 class LRCParser {
+  /// Writes lines back as text: "[mm:ss.xx]text" for timed lines, the text alone otherwise.
+  static String format(List<LyricLine> lines) => lines.map((l) {
+        final s = l.start;
+        if (s == null) return l.text;
+        final m = s ~/ 60, sec = s - m * 60;
+        return '[${m.toString().padLeft(2, '0')}:${sec.toStringAsFixed(2).padLeft(5, '0')}]${l.text}';
+      }).join('\n');
+
   /// Text in which at least this share of non-empty lines starts with a time tag is synced (RQ-6).
   static const syncedThreshold = 0.8;
 

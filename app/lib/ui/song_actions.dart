@@ -4,6 +4,7 @@ import '../app/account.dart';
 import '../app/app_model.dart';
 import '../app/i18n.dart';
 import '../app/theme.dart';
+import '../core/lyrics.dart';
 import '../core/models.dart';
 import '../core/quiz.dart';
 import 'components.dart';
@@ -31,66 +32,79 @@ Future<void> showCoverPicker(BuildContext context, Song song) {
   );
 }
 
-/// Title and artist of a song. Lyrics stay as they are, so translations and saved phrases keep
-/// their lines.
-Future<void> showEditSong(BuildContext context, Song song) {
-  final t = context.theme;
-  return showModalBottomSheet<void>(
-    context: context,
-    useRootNavigator: true,
-    isScrollControlled: true,
-    backgroundColor: t.surfaceRaised,
-    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-    builder: (_) => _EditSongSheet(song: song),
-  );
-}
+/// Song edit (Figma "가사 수정", 249:2145): title, artist, lyrics and translation language on one
+/// screen, saved with "수정 완료". Unchanged lines keep their translations and saved state.
+Future<void> showEditSong(BuildContext context, Song song) =>
+    Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => EditSongView(song: song)));
 
-class _EditSongSheet extends StatefulWidget {
+class EditSongView extends StatefulWidget {
   final Song song;
-  const _EditSongSheet({required this.song});
+  const EditSongView({super.key, required this.song});
   @override
-  State<_EditSongSheet> createState() => _EditSongSheetState();
+  State<EditSongView> createState() => _EditSongViewState();
 }
 
-class _EditSongSheetState extends State<_EditSongSheet> {
+class _EditSongViewState extends State<EditSongView> {
   late final _title = TextEditingController(text: widget.song.title);
   late final _artist = TextEditingController(text: widget.song.artist);
+  late final _lyrics = TextEditingController(text: LRCParser.format(context.readModel.collection.linesFor(widget.song.id)));
+  late String? _target = widget.song.targetLanguage;
 
   @override
   void dispose() {
     _title.dispose();
     _artist.dispose();
+    _lyrics.dispose();
     super.dispose();
   }
 
-  bool get _valid => _title.text.trim().isNotEmpty && _artist.text.trim().isNotEmpty;
+  bool get _valid => _title.text.trim().isNotEmpty && _artist.text.trim().isNotEmpty && _lyrics.text.trim().isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
-      child: SafeArea(
-        top: false,
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(tr('노래 수정'), style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: t.textPrimary)),
-          const SizedBox(height: 16),
-          Text(tr('제목'), style: TextStyle(fontSize: 12, color: t.textTertiary)),
-          const SizedBox(height: 6),
-          OutlinedField(controller: _title, hint: tr('제목'), onChanged: (_) => setState(() {})),
-          const SizedBox(height: 12),
-          Text(tr('아티스트'), style: TextStyle(fontSize: 12, color: t.textTertiary)),
-          const SizedBox(height: 6),
-          OutlinedField(controller: _artist, hint: tr('아티스트'), onChanged: (_) => setState(() {})),
-          const SizedBox(height: 20),
-          PrimaryButton(tr('저장'), onPressed: _valid ? _save : null),
-        ]),
+    final model = context.model;
+    return Scaffold(
+      appBar: AppBar(title: Text(tr('노래 수정')), centerTitle: true),
+      body: ListView(padding: const EdgeInsets.all(20), children: [
+        SectionLabel(tr('제목')),
+        const SizedBox(height: 8),
+        OutlinedField(controller: _title, hint: tr('제목'), onChanged: (_) => setState(() {})),
+        const SizedBox(height: 18),
+        SectionLabel(tr('아티스트')),
+        const SizedBox(height: 8),
+        OutlinedField(controller: _artist, hint: tr('아티스트'), onChanged: (_) => setState(() {})),
+        const SizedBox(height: 18),
+        SectionLabel(tr('가사')),
+        const SizedBox(height: 8),
+        OutlinedField(
+          controller: _lyrics,
+          hint: tr('이곳에 가사를 붙여넣어 주세요.'),
+          minLines: 10,
+          maxLines: 14,
+          style: TextStyle(color: t.textPrimary, fontSize: 13, fontFamily: 'monospace', height: 1.4),
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 6),
+        Text(tr('바꾼 줄만 다시 번역해요. 바꾼 줄에 담아 둔 문장은 빠져요.'), style: TextStyle(fontSize: 12, color: t.textTertiary)),
+        const SizedBox(height: 18),
+        SectionLabel(tr('번역 언어')),
+        const SizedBox(height: 8),
+        LanguageSelectField(value: _target, appTarget: model.target, onChanged: (v) => setState(() => _target = v)),
+      ]),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+          child: PrimaryButton(tr('수정 완료'), onPressed: _valid ? _save : null),
+        ),
       ),
     );
   }
 
   void _save() {
-    context.readModel.editSong(widget.song.id, title: _title.text, artist: _artist.text);
+    FocusScope.of(context).unfocus();
+    context.readModel.editSong(widget.song.id,
+        title: _title.text, artist: _artist.text, lyrics: _lyrics.text, targetLanguage: _target, setTarget: true);
     Navigator.pop(context);
   }
 }
