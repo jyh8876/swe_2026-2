@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:flutter/material.dart' hide Route;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyrics_translator/app/app_model.dart';
 import 'package:lyrics_translator/core/collection.dart';

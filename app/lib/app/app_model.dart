@@ -685,6 +685,28 @@ class AppModel extends ChangeNotifier {
     return byID ?? TrackMatcher.match(snap.track, collection.songs);
   }
 
+  /// Music-app track ids (Spotify id, or "package|media id") seen playing a collection song. Music
+  /// apps show titles in the display language (レモン / Lemon), so once a track has matched a song
+  /// by title, its id keeps matching when the title changes.
+  late final Map<String, String> _trackSongs = () {
+    try {
+      return Map<String, String>.from(jsonDecode(prefs.getString(_trackSongsKey) ?? '{}') as Map);
+    } catch (_) {
+      return <String, String>{};
+    }
+  }();
+  static const _trackSongsKey = 'track.songs.v1';
+
+  void _learnTrackID(PlaybackSnapshot snap) {
+    final id = snap.trackID;
+    final known = id == null ? null : _trackSongs[id];
+    if (id == null || (known != null && collection.song(known) != null)) return;
+    final song = TrackMatcher.match(snap.track, collection.songs);
+    if (song == null) return;
+    _trackSongs[id] = song.id;
+    prefs.setString(_trackSongsKey, jsonEncode(_trackSongs));
+  }
+
   /// Whether the music app is playing [song]: the Spotify track the app started for it, or the
   /// same title, artist and length.
   bool isNowPlaying(Song song) {
@@ -692,6 +714,9 @@ class AppModel extends ChangeNotifier {
     if (snap == null) return false;
     final id = _spotifyIDs[song.id];
     if (id != null && snap.trackID == id) return true;
+    final learned = snap.trackID == null ? null : _trackSongs[snap.trackID];
+    // A remembered song that was deleted no longer counts.
+    if (learned != null && collection.song(learned) != null) return learned == song.id;
     return TrackMatcher.matches(song.trackKey, snap.track);
   }
 
@@ -1084,6 +1109,14 @@ class AppModel extends ChangeNotifier {
   @visibleForTesting
   void debugAttach(NowPlayingSource s) => _attach(s);
 
+  /// Tests: a report from the music app, as _onSnapshot takes it.
+  @visibleForTesting
+  void debugReport(PlaybackSnapshot snap) {
+    nowPlaying = snap;
+    _learnTrackID(snap);
+    notifyListeners();
+  }
+
   void _attach(NowPlayingSource s) {
     _sourceSub?.cancel();
     if (_primary != s) _primary?.dispose();
@@ -1115,6 +1148,7 @@ class AppModel extends ChangeNotifier {
     source = from;
     activeSourceID = from.id;
     nowPlaying = snap;
+    _learnTrackID(snap);
     if (from == _musicApp && snap.appPackage != null && snap.isPlaying && prefs.getString(_musicPackageKey) != snap.appPackage) {
       prefs.setString(_musicPackageKey, snap.appPackage!);
     }

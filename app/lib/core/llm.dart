@@ -680,50 +680,180 @@ class ClaudeEngine extends CloudChatEngine {
 
 /// Gemini API adapter (SIR-10). Same contract as Claude behind the same engine interface.
 class GeminiEngine extends CloudChatEngine {
+  /// Used when the model list cannot be read. Google retires Gemini models on a schedule
+  /// (2.5 Flash: 2026-12-01), so the model is normally picked from the key's own model list.
   static const defaultModel = 'gemini-2.5-flash';
+  static const _api = 'https://generativelanguage.googleapis.com/v1beta';
 
-  GeminiEngine(String apiKey, {String model = defaultModel, http.Client? client}) : super(apiKey, model, client);
+  /// The model picked for each key in this run of the app.
+  static final _picked = <String, String>{};
+
+  final String? _fixedModel;
+
+  GeminiEngine(String apiKey, {String? model, http.Client? client})
+      : _fixedModel = model,
+        super(apiKey, model ?? defaultModel, client);
+
+  /// The model in use: the one given, else the one picked for this key, else [defaultModel].
+  String get currentModel => _fixedModel ?? _picked[apiKey] ?? defaultModel;
 
   @override
-  String get id => 'gemini:$model';
+  String get id => 'gemini:$currentModel';
   @override
   EngineKind get kind => EngineKind.gemini;
+
+  Map<String, String> get _headers => {'x-goog-api-key': apiKey, 'content-type': 'application/json'};
+
+  /// Picks the best stable Flash model from the names the key can use for generateContent:
+  /// highest version first, Flash before Flash-Lite; previews, experiments and special-purpose
+  /// models (image, audio, live, TTS) are left out. Null when none fits.
+  static String? pickModel(Iterable<String> names) {
+    final re = RegExp(r'^gemini-(\d+(?:\.\d+)?)-flash(-lite)?(?:-(\d{3}))?$');
+    (double, int, int, String)? best;
+    for (final n in names) {
+      final m = re.firstMatch(n);
+      if (m == null) continue;
+      final rank = (double.parse(m.group(1)!), m.group(2) == null ? 1 : 0, m.group(3) == null ? 1 : 0, n);
+      if (best == null ||
+          rank.$1 > best.$1 ||
+          (rank.$1 == best.$1 && (rank.$2 > best.$2 || (rank.$2 == best.$2 && rank.$3 > best.$3)))) {
+        best = rank;
+      }
+    }
+    if (best != null) return best.$4;
+    return names.contains('gemini-flash-latest') ? 'gemini-flash-latest' : null;
+  }
+
+  /// Reads the models this key can use (no text is generated, so it costs nothing) and picks one.
+  /// Throws [LLMError.invalidKey] for a key Google does not accept.
+  Future<String> _resolveModel() async {
+    final fixed = _fixedModel;
+    if (fixed != null) return fixed;
+    final known = _picked[apiKey];
+    if (known != null) return known;
+    if (apiKey.isEmpty) throw LLMError.missingAPIKey;
+    final names = <String>[];
+    String? page;
+    for (var n = 0; n < 5; n++) {
+      final http.Response r;
+      try {
+        r = await client
+            .get(Uri.parse('$_api/models?pageSize=200${page == null ? '' : '&pageToken=$page'}'), headers: _headers)
+            .timeout(const Duration(seconds: 20));
+      } catch (_) {
+        throw LLMError.network;
+      }
+      _check(r);
+      final j = jsonDecode(utf8.decode(r.bodyBytes)) as Map;
+      for (final m in (j['models'] as List? ?? const [])) {
+        final methods = (m['supportedGenerationMethods'] as List?)?.cast<String>() ?? const [];
+        if (methods.contains('generateContent')) names.add('${m['name']}'.replaceFirst('models/', ''));
+      }
+      page = j['nextPageToken'] as String?;
+      if (page == null || page.isEmpty) break;
+    }
+    return _picked[apiKey] = pickModel(names) ?? defaultModel;
+  }
+
+  /// Maps Gemini's error answers. 400 is a wrong key only when Google says so (API_KEY_INVALID);
+  /// other 400s are bad requests, not the user's key.
+  static void _check(http.Response r) {
+    final s = r.statusCode;
+    if (s >= 200 && s < 300) return;
+    final body = utf8.decode(r.bodyBytes, allowMalformed: true);
+    if (s == 401 || s == 403 || (s == 400 && body.contains('API_KEY_INVALID'))) throw LLMError.invalidKey;
+    if (s == 429) throw LLMError.rateLimited;
+    if (s == 404) throw LLMError(LLMErrorKind.server, status: s, detail: 'model not found');
+    throw LLMError(LLMErrorKind.server, status: s, detail: _message(body));
+  }
+
+  static String? _message(String body) {
+    try {
+      return '${((jsonDecode(body) as Map)['error'] as Map)['message']}';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Thinking models count their reasoning against maxOutputTokens, which left translations cut
+  /// off mid-JSON. 2.5 models switch thinking off with a zero budget; later models get a low
+  /// thinking level and extra room.
+  static Map<String, dynamic>? _thinking(String model) {
+    if (model.startsWith('gemini-2.5-flash')) return {'thinkingBudget': 0};
+    if (model.startsWith('gemini-2.')) return null;
+    return {'thinkingLevel': 'low'};
+  }
+
+  @override
+  Future<void> verifyKey() async {
+    _picked.remove(apiKey);
+    await _resolveModel();
+  }
 
   @override
   Future<String> complete({required String system, required String user, required int maxTokens}) async {
     if (apiKey.isEmpty) throw LLMError.missingAPIKey;
-    final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent');
-    // Header, not query string, so the key never lands in URL logs (LOS-10).
-    final r = await post(url, {'x-goog-api-key': apiKey, 'content-type': 'application/json'}, {
-      'systemInstruction': {
-        'parts': [
-          {'text': system},
-        ],
-      },
-      'contents': [
-        {
-          'role': 'user',
+    var model = await _resolveModel();
+    var thinking = _thinking(model);
+    for (var attempt = 0;; attempt++) {
+      final r = await post(Uri.parse('$_api/models/$model:generateContent'), _headers, {
+        'systemInstruction': {
           'parts': [
-            {'text': user},
+            {'text': system},
           ],
         },
-      ],
-      'generationConfig': {'maxOutputTokens': maxTokens, 'responseMimeType': 'application/json'},
-    });
-    final s = r.statusCode;
-    if (s == 400 || s == 401 || s == 403) throw LLMError.invalidKey;
-    if (s == 429) throw LLMError.rateLimited;
-    if (s < 200 || s >= 300) throw LLMError(LLMErrorKind.server, status: s);
-    try {
-      final j = jsonDecode(utf8.decode(r.bodyBytes)) as Map;
-      final c = (j['candidates'] as List).first as Map;
-      if (c['finishReason'] == 'SAFETY') throw LLMError.refused;
-      final parts = (c['content']?['parts'] as List?) ?? const [];
-      return parts.map((p) => p['text']).whereType<String>().join();
-    } on LLMError {
-      rethrow;
-    } catch (_) {
-      throw const LLMError(LLMErrorKind.malformedOutput, detail: 'response');
+        'contents': [
+          {
+            'role': 'user',
+            'parts': [
+              {'text': user},
+            ],
+          },
+        ],
+        'generationConfig': {
+          // Room for reasoning unless thinking is switched off.
+          'maxOutputTokens': thinking != null && thinking['thinkingBudget'] == 0 ? maxTokens : maxTokens + 4096,
+          'responseMimeType': 'application/json',
+          'thinkingConfig': ?thinking,
+        },
+      });
+      try {
+        _check(r);
+      } on LLMError catch (e) {
+        if (attempt >= 2) rethrow;
+        if (e.status == 404 && _fixedModel == null) {
+          // The picked model was retired: read the list again and pick another.
+          _picked.remove(apiKey);
+          model = await _resolveModel();
+          thinking = _thinking(model);
+          continue;
+        }
+        if (e.status == 400 && thinking != null) {
+          // A model that does not take this thinking setting: ask again without it.
+          thinking = null;
+          continue;
+        }
+        rethrow;
+      }
+      try {
+        final j = jsonDecode(utf8.decode(r.bodyBytes)) as Map;
+        final candidates = j['candidates'] as List?;
+        if (candidates == null || candidates.isEmpty) {
+          if (j['promptFeedback']?['blockReason'] != null) throw LLMError.refused;
+          throw const LLMError(LLMErrorKind.malformedOutput, detail: 'no candidates');
+        }
+        final c = candidates.first as Map;
+        if (c['finishReason'] == 'SAFETY' || c['finishReason'] == 'PROHIBITED_CONTENT') throw LLMError.refused;
+        final parts = (c['content']?['parts'] as List?) ?? const [];
+        // Thought summaries (thought: true) are not part of the answer.
+        final text = parts.where((p) => p['thought'] != true).map((p) => p['text']).whereType<String>().join();
+        if (text.isEmpty) throw LLMError(LLMErrorKind.malformedOutput, detail: 'empty (${c['finishReason']})');
+        return text;
+      } on LLMError {
+        rethrow;
+      } catch (_) {
+        throw const LLMError(LLMErrorKind.malformedOutput, detail: 'response');
+      }
     }
   }
 }

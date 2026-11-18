@@ -564,6 +564,7 @@ class MusicAppSource implements NowPlayingSource {
         isPlaying: e['playing'] == true,
         // A paused session reports speed 0; the sync engine only advances while playing anyway.
         rate: speed <= 0 ? 1 : speed,
+        trackID: mediaTrackID(e['package'] as String?, e['mediaId'] as String?),
         appName: e['app'] as String?,
         appPackage: e['package'] as String?,
       );
@@ -776,4 +777,13 @@ class QuizProgress {
 class Haptics {
   static void light() => HapticFeedback.lightImpact();
   static void success() => HapticFeedback.mediumImpact();
+}
+
+/// A stable id for the playing track from a media session: Spotify's bare track id (the same one
+/// the Web API and App Remote use), or "package|media id" for other apps. Null without an id.
+String? mediaTrackID(String? package, String? mediaId) {
+  final id = mediaId?.trim() ?? '';
+  if (id.isEmpty) return null;
+  if (id.startsWith('spotify:track:')) return id.substring('spotify:track:'.length);
+  return '${package ?? ''}|$id';
 }

@@ -170,6 +170,9 @@ class MediaSessionBridge(private val context: Context, messenger: BinaryMessenge
                 ?: md.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST)
                 ?: md.getString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE) ?: ""),
             "album" to md.getString(MediaMetadata.METADATA_KEY_ALBUM),
+            // The app's own id for the track (Spotify: spotify:track:…). Titles can change with the
+            // app's display language; the id does not.
+            "mediaId" to md.getString(MediaMetadata.METADATA_KEY_MEDIA_ID),
             "durationMs" to md.getLong(MediaMetadata.METADATA_KEY_DURATION),
             "positionMs" to (st?.position ?: 0L),
             // How long ago the position was measured, so Dart can extrapolate from the right moment.
