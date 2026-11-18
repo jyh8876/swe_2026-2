@@ -118,18 +118,16 @@ class _SettingsViewState extends State<SettingsView> {
         _section(tr('번역 엔진'), [
           for (final (kind, label) in [
             (EngineKind.onDevice, tr('온디바이스 (기본)')),
-            (EngineKind.vynilo, tr('Vynilo 서버')),
-            (EngineKind.gateway, tr('LLM 게이트웨이')),
-            (EngineKind.claude, 'Claude API'),
             (EngineKind.gemini, 'Gemini API'),
+            (EngineKind.gateway, tr('LLM 게이트웨이')),
           ])
             _radio(label, s.engine == kind, () => model.updateSettings((x) => x.engine = kind)),
           if (s.engine == EngineKind.onDevice) ...[
             _row(tr('사용 중'), trailing: EngineFactory.label(EngineKind.onDevice)),
             _modelDownloadRow(model),
-          ] else if (s.engine == EngineKind.vynilo || s.engine == EngineKind.gateway) ...[
+          ] else if (s.engine == EngineKind.gateway) ...[
             _row(tr('사용 중'), trailing: _endpointSummary(model)),
-            _nav(s.engine == EngineKind.vynilo ? tr('서버 설정') : tr('게이트웨이 설정'),
+            _nav(tr('게이트웨이 설정'),
                 () => Navigator.push(context, MaterialPageRoute(builder: (_) => EndpointSettingsView(kind: s.engine)))),
           ] else
             _nav(tr('API 키 입력'), () => Navigator.push(context, MaterialPageRoute(builder: (_) => const APIKeyEntryView()))),
@@ -405,7 +403,6 @@ class _SettingsViewState extends State<SettingsView> {
     final s = model.settings;
     final hasKey = (model.apiKey(s.engine) ?? '').isNotEmpty;
     if (!hasKey) return tr('설정 필요');
-    if (s.engine == EngineKind.vynilo) return s.vyniloModel.isEmpty ? tr('서버 기본 모델') : s.vyniloModel;
     return s.gatewayModel.isEmpty ? tr('모델 선택 필요') : s.gatewayModel;
   }
 
@@ -512,17 +509,11 @@ class APIKeyEntryView extends StatefulWidget {
 }
 
 class _APIKeyEntryViewState extends State<APIKeyEntryView> {
-  EngineKind provider = EngineKind.claude;
+  // Gemini is the only engine that takes a personal API key now.
+  final EngineKind provider = EngineKind.gemini;
   final _key = TextEditingController();
   String status = 'idle';
   String? failure;
-
-  @override
-  void initState() {
-    super.initState();
-    final e = context.readModel.settings.engine;
-    if (e.requiresAPIKey) provider = e;
-  }
 
   @override
   void dispose() {
@@ -544,24 +535,7 @@ class _APIKeyEntryViewState extends State<APIKeyEntryView> {
         ],
       ),
       body: ListView(padding: const EdgeInsets.all(20), children: [
-        SegmentedButton<EngineKind>(
-          segments: const [
-            ButtonSegment(value: EngineKind.claude, label: Text('Claude')),
-            ButtonSegment(value: EngineKind.gemini, label: Text('Gemini')),
-          ],
-          selected: {provider},
-          showSelectedIcon: false,
-          style: SegmentedButton.styleFrom(
-            selectedBackgroundColor: t.accent,
-            selectedForegroundColor: t.onAccent,
-            foregroundColor: t.textSecondary,
-            side: BorderSide(color: t.stroke),
-          ),
-          onSelectionChanged: (v) => setState(() {
-            provider = v.first;
-            status = 'idle';
-          }),
-        ),
+        Text('Gemini API', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: t.textPrimary)),
         const SizedBox(height: 20),
         if (saved != null && _key.text.isEmpty) ...[
           Row(children: [
@@ -586,9 +560,7 @@ class _APIKeyEntryViewState extends State<APIKeyEntryView> {
           ]),
         const SizedBox(height: 16),
         Text(
-          provider == EngineKind.gemini
-              ? tr('Google AI Studio(aistudio.google.com)에서 API 키를 만들 수 있어요. Gemini 앱 구독은 API 키가 아니에요. 가사는 Google로 전송되고 사용량은 내 계정에 청구돼요.')
-              : tr('Claude Console(console.anthropic.com)에서 API 키를 만들 수 있어요. Claude Pro/Max 구독은 API 키가 아니에요. 가사는 Anthropic으로 전송되고 사용량은 내 계정에 청구돼요 (한 곡에 약 \$0.006).'),
+          tr('Google AI Studio(aistudio.google.com)에서 API 키를 만들 수 있어요. Gemini 앱 구독은 API 키가 아니에요. 가사는 Google로 전송되고 사용량은 내 계정에 청구돼요.'),
           style: TextStyle(fontSize: 12, color: t.textTertiary),
         ),
       ]),
@@ -600,7 +572,7 @@ class _APIKeyEntryViewState extends State<APIKeyEntryView> {
     setState(() => status = 'verifying');
     final key = _key.text.trim();
     try {
-      final CloudChatEngine engine = provider == EngineKind.gemini ? GeminiEngine(key) : ClaudeEngine(key);
+      final CloudChatEngine engine = GeminiEngine(key);
       await engine.verifyKey();
       await model.secureStore.set(key, SecretKey.apiKeyFor(provider)!);
       model.updateSettings((s) => s.engine = provider);

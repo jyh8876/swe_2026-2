@@ -14,6 +14,11 @@ enum EngineKind {
   claude,
   gemini;
 
+  /// The engines the app offers (Notion 11/19: on-device, Gemini, gateway). Vynilo server and
+  /// Claude are no longer offered; saved settings that used them move to Gemini.
+  static const offered = [EngineKind.onDevice, EngineKind.gemini, EngineKind.gateway];
+  bool get isOffered => offered.contains(this);
+
   /// Engines whose key is entered on the API key screen (Claude, Gemini).
   /// The Vynilo server and gateways have their own settings screens.
   bool get requiresAPIKey => this == EngineKind.claude || this == EngineKind.gemini;

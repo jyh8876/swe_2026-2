@@ -87,8 +87,7 @@ class _LineDetailViewState extends State<LineDetailView> {
 
   EngineKind? get _availableCloudEngine {
     final model = context.readModel;
-    // The Vynilo server only translates, so it is not offered for explanations.
-    for (final k in [EngineKind.claude, EngineKind.gemini, EngineKind.gateway]) {
+    for (final k in [EngineKind.gemini, EngineKind.gateway]) {
       if (EngineFactory.make(k, model.apiKey(k), model.settings.engineConfig).isAvailable) return k;
     }
     return null;

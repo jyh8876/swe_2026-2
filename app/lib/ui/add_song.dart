@@ -215,9 +215,8 @@ Future<void> addToCollection(BuildContext context, AddSongDraft draft, {String? 
   if (engine.isCloud && !model.settings.cloudNoticeAccepted) {
     final ok = await confirmDialog(
       context,
-      title: engine == EngineKind.vynilo ? tr('가사가 내 Vynilo 서버로 전송돼요') : tr('가사가 선택한 AI 서비스로 전송돼요'),
+      title: tr('가사가 선택한 AI 서비스로 전송돼요'),
       message: switch (engine) {
-        EngineKind.vynilo => tr('Tailscale로 연결된 내 서버에서 번역해요. 외부 AI 서비스로는 보내지 않아요.'),
         EngineKind.gateway => tr('LLM 게이트웨이로 가사를 보내 번역하고, 사용량은 게이트웨이 계정에 청구돼요.'),
         _ => tr('{0} API로 가사를 보내 번역하고, 사용량은 내 API 계정에 청구돼요. 노래 한 곡에 약 \$0.01 미만이에요.', [engine.badgeLabel]),
       },

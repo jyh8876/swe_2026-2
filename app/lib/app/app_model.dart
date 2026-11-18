@@ -164,6 +164,7 @@ class AppSettings {
     final s = AppSettings();
     s.hasOnboarded = j['hasOnboarded'] == true;
     s.engine = EngineKind.values.firstWhere((e) => e.name == j['engine'], orElse: () => EngineKind.onDevice);
+    if (!s.engine.isOffered) s.engine = EngineKind.gemini;
     s.targetLanguage = j['targetLanguage'] as String? ?? Language.korean.code;
     s.uiLanguage = j['uiLanguage'] as String? ?? Language.korean.code;
     s.showTranslation = j['showTranslation'] != false;
