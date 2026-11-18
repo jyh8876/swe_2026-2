@@ -132,3 +132,25 @@ test('revocation exchanges the code, then revokes the refresh token', async () =
   assert.deepEqual([calls[1][1].token, calls[1][1].token_type_hint], ['r1', 'refresh_token']);
   await assert.rejects(revokeAppleTokens({ code: 'bad', clientId: 'x', clientSecret: 's', post: async () => ({ status: 400, json: { error: 'invalid_grant' } }) }), /invalid_grant/);
 });
+
+import { coinDay, isSessionToken, InputError, sessionToken, songInput, verifySession, AuthError as AE } from '../src/core.mjs';
+
+test('session tokens round-trip and refuse another secret or an old token', () => {
+  const { token, expiresAt } = sessionToken({ secret: 's1', userId: 'google:1', now: 0 });
+  assert.equal(expiresAt, 30 * 24 * 3600);
+  assert.ok(isSessionToken(token));
+  assert.equal(verifySession(token, { secret: 's1', now: 1000 }), 'google:1');
+  assert.throws(() => verifySession(token, { secret: 's2', now: 1000 }), AE);
+  assert.throws(() => verifySession(token, { secret: 's1', now: (expiresAt + 1) * 1000 }), AE);
+});
+
+test('the coin day turns at midnight in Seoul', () => {
+  assert.equal(coinDay(Date.parse('2026-11-20T14:59:00Z')), '2026-11-20');
+  assert.equal(coinDay(Date.parse('2026-11-20T15:00:00Z')), '2026-11-21');
+});
+
+test('song input keeps metadata and refuses lyrics', () => {
+  assert.deepEqual(songInput({ title: ' A ', artist: 'B', isrc: 'usrc17607839' }), { title: 'A', artist: 'B', appleMusicId: null, isrc: 'USRC17607839', artworkUrl: null, addedAt: null });
+  assert.throws(() => songInput({ title: 'A', artist: 'B', lines: [] }), InputError);
+  assert.throws(() => songInput({ title: 'A' }), InputError);
+});
