@@ -1,6 +1,6 @@
 # Vynilo app (Flutter)
 
-Version 0.11.0, Android package `com.vynilo.lyrics`, shown as **Vinylo**. Named DAY-OFF / LyricsTranslator up to 0.7.0.
+Version 0.11.0, Android package `com.vinylo.app`, shown as **Vinylo**. Named DAY-OFF / LyricsTranslator up to 0.7.0.
 
 ## What it does
 - **Any music app, no login.**

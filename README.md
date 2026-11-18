@@ -8,7 +8,7 @@ This is the 2026-2 Software Engineering team project. The app was called DAY-OFF
 
 | Path | What it is | Build on |
 |---|---|---|
-| [`app/`](app/) | **Vynilo app (Flutter)**, Android package `com.vynilo.lyrics`. See [`app/README.md`](app/README.md). | Linux / macOS / Windows (Android APK) |
+| [`app/`](app/) | **Vynilo app (Flutter)**, Android package `com.vinylo.app`. See [`app/README.md`](app/README.md). | Linux / macOS / Windows (Android APK) |
 | [`ios/`](ios/) | Native SwiftUI prototype with the `LyricsCore` Swift package. Reference implementation of SSRD v1.2. | macOS + Xcode |
 | [`docs/ssad_diagrams/`](docs/ssad_diagrams/) | PlantUML sources for the SSAD figures | any PlantUML |
 
@@ -26,7 +26,7 @@ flutter build apk --release --target-platform android-arm64 --dart-define=SPOTIF
 **Requirements to run the app**
 - A Spotify app registered in the Spotify Developer Dashboard with:
   - the redirect URI `vynilo://spotify-callback`
-  - the Android package `com.vynilo.lyrics` and your signing certificate's SHA-1
+  - the Android package `com.vinylo.app` and your signing certificate's SHA-1
 - On the phone, the Spotify app logged in with a Premium account. In Development mode, that account must be listed under User Management.
 - A translation engine, chosen in the app: the on-device model (downloaded in the app), the Vynilo server, an OpenAI-compatible LLM gateway, Claude or Gemini.
 
