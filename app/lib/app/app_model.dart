@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -62,7 +63,10 @@ class SavedRoute extends Route {
 
 class PlayerRoute extends Route {
   final String songID;
-  const PlayerRoute(this.songID);
+
+  /// Opens the timing (sync) menu right away (song menu → "싱크 맞추기").
+  final bool openTiming;
+  const PlayerRoute(this.songID, {this.openTiming = false});
 }
 
 /// Tracks of a Spotify playlist, saved album or the liked songs.
@@ -319,7 +323,8 @@ class AppModel extends ChangeNotifier {
     )
       ..listenForLinks()
       ..refreshSourceConnection()
-      ..fillCovers();
+      ..fillCovers()
+      ..resumeServerSync();
   }
 
   // ── Persistence ──
@@ -468,6 +473,7 @@ class AppModel extends ChangeNotifier {
     });
     startTranslation(song.id);
     if (draft.spotifyTrackID != null) _rememberSpotifyID(song.id, draft.spotifyTrackID!);
+    _toServer((api, token) => api.putSong(token, songID: song.id, title: song.title, artist: song.artist, addedAt: song.addedAt));
     if (song.coverPath == null) fillCovers();
     return song.id;
   }
@@ -578,8 +584,23 @@ class AppModel extends ChangeNotifier {
     return saved;
   }
 
-  void setConquered(String songID, bool conquered) =>
-      _mutate((s) => s.updateSong(songID, (song) => song.conqueredAt = conquered ? DateTime.now() : null));
+  void setConquered(String songID, bool conquered) {
+    final at = conquered ? DateTime.now() : null;
+    _mutate((s) => s.updateSong(songID, (song) => song.conqueredAt = at));
+    _toServer((api, token) => api.setConquered(token, songID, at));
+  }
+
+  /// Changes a song's title and artist (lyrics stay, so translations keep their lines).
+  void editSong(String songID, {required String title, required String artist}) {
+    final ti = title.trim(), ar = artist.trim();
+    if (ti.isEmpty || ar.isEmpty) return;
+    _mutate((s) => s.updateSong(songID, (song) {
+          song.title = ti;
+          song.artist = ar;
+        }));
+    final song = collection.song(songID);
+    if (song != null) _toServer((api, token) => api.putSong(token, songID: songID, title: ti, artist: ar, addedAt: song.addedAt));
+  }
 
   void setOffset(String songID, double offset) => _mutate((s) => s.updateSong(songID, (song) => song.offset = offset));
 
@@ -589,6 +610,7 @@ class AppModel extends ChangeNotifier {
     if (cover != null) CoverStore.delete(cover);
     _mutate((s) => s.deleteSong(songID, keepPhrases: keepPhrases));
     quiz.forget(songID);
+    _toServer((api, token) => api.deleteSong(token, songID));
   }
 
   void retranslate(String songID) {
@@ -688,19 +710,105 @@ class AppModel extends ChangeNotifier {
     if (accountApi.isConfigured) {
       final token = r.idToken;
       if (token == null) throw const AccountApiException('no ID token');
-      await accountApi.register(token, name: r.account.name);
+      final session = await accountApi.register(token, name: r.account.name, country: _deviceCountry);
+      await secureStore.set(session.encode(), SecretKey.vinyloSession);
     }
     updateSettings((s) => s.account = r.account);
+    if (accountApi.isConfigured) await syncToServer();
   }
 
   /// Signs out on this device. The account stays on the server.
   Future<void> signOut() async {
     if (settings.account?.provider == 'google') await GoogleAuth.signOut();
+    await secureStore.delete(SecretKey.vinyloSession);
     updateSettings((s) => s.account = null);
   }
 
+  // ── Server sync (metadata only: no lyrics, translations or covers) ──
+
+  String? get _deviceCountry {
+    final c = PlatformDispatcher.instance.locale.countryCode;
+    return c != null && RegExp(r'^[A-Za-z]{2}$').hasMatch(c) ? c.toUpperCase() : null;
+  }
+
+  /// The session token while signed in on a build with a server; null otherwise.
+  String? get _serverToken {
+    if (!accountApi.isConfigured || settings.account == null) return null;
+    final s = AccountSession.decode(secureStore.value(SecretKey.vinyloSession));
+    return s != null && s.isValid ? s.token : null;
+  }
+
+  static const _syncPendingKey = 'server.syncPending.v1';
+
+  /// Sends one change in the background. A failure (offline, server down) is not shown; it
+  /// marks a full sync, which runs on the next start.
+  void _toServer(Future<void> Function(AccountApi api, String token) send) {
+    final token = _serverToken;
+    if (token == null) return;
+    unawaited(send(accountApi, token).then((_) {}, onError: (Object _) => prefs.setBool(_syncPendingKey, true)));
+  }
+
+  /// Uploads every song's metadata, conquered state and best quiz scores. Runs after sign-in and,
+  /// when an earlier change did not reach the server, on the next start.
+  Future<void> syncToServer() async {
+    final token = _serverToken;
+    if (token == null) return;
+    final scores = quiz.scores;
+    try {
+      for (final song in [...collection.songs]) {
+        await accountApi.putSong(token, songID: song.id, title: song.title, artist: song.artist, addedAt: song.addedAt);
+        if (song.conqueredAt != null) await accountApi.setConquered(token, song.id, song.conqueredAt);
+        for (final e in (scores[song.id] ?? const <int, int>{}).entries) {
+          await accountApi.putQuiz(token, song.id, e.key, score: e.value);
+        }
+      }
+      await prefs.setBool(_syncPendingKey, false);
+    } on AccountApiException {
+      await prefs.setBool(_syncPendingKey, true);
+    }
+  }
+
+  /// Runs the full sync left over from an earlier failure.
+  void resumeServerSync() {
+    if (prefs.getBool(_syncPendingKey) == true) unawaited(syncToServer());
+  }
+
+  /// Reports an AI translation of [songID] (one line when [lineIndex] is given). Only the song's
+  /// title and artist, the line number, the reason and the engine are sent; the lyric line and
+  /// its translation stay on the phone. Throws [AccountApiException] when it cannot be sent.
+  Future<void> reportTranslation(String songID, {required ReportReason reason, int? lineIndex, String? comment}) async {
+    final song = collection.song(songID);
+    if (song == null) return;
+    final token = _serverToken;
+    if (!accountApi.isConfigured) throw const AccountApiException('not configured');
+    if (token == null) throw const AccountApiException('sign in', 401);
+    final target = targetFor(songID).code;
+    final t = lineIndex == null ? null : collection.translation(songID, lineIndex, target);
+    final engineID = t?.engineID ??
+        collection.translations.where((x) => x.songID == songID && x.targetLanguage == target).map((x) => x.engineID).firstOrNull ??
+        currentEngine().id;
+    await accountApi.report(token,
+        reason: reason,
+        title: song.title,
+        artist: song.artist,
+        lineIndex: lineIndex,
+        comment: comment == null || comment.length <= 500 ? comment : comment.substring(0, 500),
+        engine: engineID.split('@').first.split(':').first,
+        model: engineID,
+        promptVersion: t?.promptVersion ?? Prompts.version,
+        targetLanguage: target);
+    _reported.add('$songID#${lineIndex ?? '*'}');
+    notifyListeners();
+  }
+
+  final _reported = <String>{};
+
+  /// True once the song (or line) was reported in this run of the app.
+  bool wasReported(String songID, [int? lineIndex]) => _reported.contains('$songID#${lineIndex ?? '*'}');
+
   /// Deletes the account: the user signs in once more so the server can check who is asking
-  /// (and, for Apple, revoke the Apple tokens), then the record is deleted and the app signs out.
+  /// (and, for Apple, revoke the Apple tokens), then everything on the server is deleted and the
+  /// app signs out.
   /// Returns false when the user cancels. Songs and lyrics on the device are not touched.
   Future<bool> deleteAccount() async {
     final current = settings.account;
@@ -1266,9 +1374,14 @@ class AppModel extends ChangeNotifier {
           if (t.songID == songID && t.targetLanguage == targetFor(songID).code && t.text != null) t.index: t.text!,
       };
 
-  /// Records a passed level. Returns true when this pass conquered the song.
-  bool passQuizLevel(String songID, int level) {
+  /// Records a passed level and its [score] (0 to 100). Returns true when this pass conquered
+  /// the song.
+  bool passQuizLevel(String songID, int level, {int? score}) {
     quiz.pass(songID, level);
+    if (score != null) {
+      final best = quiz.recordScore(songID, level, score);
+      _toServer((api, token) => api.putQuiz(token, songID, level, score: best, completedAt: DateTime.now()));
+    }
     notifyListeners();
     if (quiz.level(songID) >= QuizBuilder.levels && collection.song(songID)?.isConquered == false) {
       setConquered(songID, true);

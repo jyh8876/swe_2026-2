@@ -60,7 +60,31 @@ class AccountApiException implements Exception {
   String toString() => status == null ? message : '$message ($status)';
 }
 
-/// The Vinylo account server (server/aws): it stores users only, never lyrics or songs.
+/// A Vinylo session from the server (30 days), so later calls need no fresh Google/Apple token.
+class AccountSession {
+  final String token;
+  final DateTime expiresAt;
+  const AccountSession(this.token, this.expiresAt);
+
+  bool get isValid => DateTime.now().isBefore(expiresAt.subtract(const Duration(hours: 1)));
+
+  String encode() => jsonEncode({'token': token, 'expiresAt': expiresAt.millisecondsSinceEpoch ~/ 1000});
+  static AccountSession? decode(String? raw) {
+    if (raw == null) return null;
+    try {
+      final j = jsonDecode(raw) as Map;
+      return AccountSession(j['token'] as String, DateTime.fromMillisecondsSinceEpoch((j['expiresAt'] as num).toInt() * 1000));
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+/// Why a user reports an AI translation (server: REPORT_REASONS).
+enum ReportReason { wrong, awkward, offensive, reading, other }
+
+/// The Vinylo server (server/aws). It keeps users, song metadata, quiz scores, conquered songs,
+/// coins and purchases; never lyrics, translations or quiz questions.
 ///   --dart-define=VINYLO_API_URL=https://…lambda-url….on.aws
 /// Without it the account stays on the device only.
 class AccountApi {
@@ -74,9 +98,9 @@ class AccountApi {
 
   bool get isConfigured => base.isNotEmpty;
 
-  Future<Map<String, dynamic>?> _send(String method, String idToken, [Map<String, Object?>? body]) async {
-    final req = http.Request(method, Uri.parse('$base/v1/me'))
-      ..headers['authorization'] = 'Bearer $idToken'
+  Future<Map<String, dynamic>?> _send(String method, String path, String token, [Map<String, Object?>? body]) async {
+    final req = http.Request(method, Uri.parse('$base$path'))
+      ..headers['authorization'] = 'Bearer $token'
       ..headers['content-type'] = 'application/json';
     if (body != null) req.body = jsonEncode(body);
     final http.Response r;
@@ -93,16 +117,69 @@ class AccountApi {
       } catch (_) {}
       throw AccountApiException(message, r.statusCode);
     }
-    return r.body.isEmpty ? null : Map<String, dynamic>.from(jsonDecode(r.body) as Map);
+    if (r.body.isEmpty) return null;
+    try {
+      return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
+    } catch (_) {
+      return null;
+    }
   }
 
-  /// Creates or updates the user. [name] is sent when Apple gave one (only on the first sign-in).
-  Future<Map<String, dynamic>?> register(String idToken, {String? name}) => _send('POST', idToken, {'name': ?name});
+  /// Signs in with a Google ID token or Apple identity token: creates or updates the user and
+  /// returns a session. [name] is sent when Apple gave one (only on the first sign-in);
+  /// [country] is the device region (2 letters).
+  Future<AccountSession> register(String idToken, {String? name, String? country}) async {
+    final j = await _send('POST', '/v1/me', idToken, {'name': ?name, 'country': ?country});
+    final s = j?['session'];
+    if (s is! Map || s['token'] is! String || s['expiresAt'] is! num) throw const AccountApiException('no session');
+    return AccountSession(s['token'] as String, DateTime.fromMillisecondsSinceEpoch((s['expiresAt'] as num).toInt() * 1000));
+  }
 
-  /// Deletes the user on the server. For Apple, [authorizationCode] lets the server revoke the
-  /// Apple tokens as App Store guideline 5.1.1(v) requires.
-  Future<void> delete(String idToken, {String? authorizationCode}) =>
-      _send('DELETE', idToken, {'authorizationCode': ?authorizationCode});
+  /// Deletes everything of the user on the server. For Apple, [authorizationCode] lets the server
+  /// revoke the Apple tokens as App Store guideline 5.1.1(v) requires.
+  Future<void> delete(String token, {String? authorizationCode}) =>
+      _send('DELETE', '/v1/me', token, {'authorizationCode': ?authorizationCode});
+
+  /// Song metadata only: title and artist (no lyrics, no picked covers).
+  Future<void> putSong(String token, {required String songID, required String title, required String artist, DateTime? addedAt}) =>
+      _send('PUT', '/v1/songs/${Uri.encodeComponent(songID)}', token,
+          {'title': title, 'artist': artist, 'addedAt': addedAt?.toUtc().toIso8601String()});
+
+  Future<void> deleteSong(String token, String songID) => _send('DELETE', '/v1/songs/${Uri.encodeComponent(songID)}', token);
+
+  Future<void> putQuiz(String token, String songID, int level, {required int score, DateTime? completedAt}) =>
+      _send('PUT', '/v1/quiz/${Uri.encodeComponent(songID)}/$level', token,
+          {'score': score, 'completedAt': completedAt?.toUtc().toIso8601String()});
+
+  Future<void> setConquered(String token, String songID, DateTime? at) => at == null
+      ? _send('DELETE', '/v1/conquered/${Uri.encodeComponent(songID)}', token)
+      : _send('PUT', '/v1/conquered/${Uri.encodeComponent(songID)}', token, {'conqueredAt': at.toUtc().toIso8601String()});
+
+  /// Reports an AI translation: which song and line, why, and which engine made it. The lyric
+  /// line and its translation stay on the phone.
+  Future<void> report(String token,
+          {required ReportReason reason,
+          required String title,
+          required String artist,
+          int? lineIndex,
+          String? comment,
+          required String engine,
+          String? model,
+          String? promptVersion,
+          String? targetLanguage,
+          String? appVersion}) =>
+      _send('POST', '/v1/reports', token, {
+        'reason': reason.name,
+        'title': title,
+        'artist': artist,
+        'lineIndex': ?lineIndex,
+        if (comment != null && comment.trim().isNotEmpty) 'comment': comment.trim(),
+        'engine': engine,
+        'model': ?model,
+        'promptVersion': ?promptVersion,
+        'targetLanguage': ?targetLanguage,
+        'appVersion': ?appVersion,
+      });
 }
 
 /// Sign in with Apple (iOS; required by App Store guideline 4.8 next to Google sign-in).

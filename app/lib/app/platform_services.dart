@@ -20,6 +20,7 @@ enum SecretKey {
   claudeAPIKey('api.claude'),
   geminiAPIKey('api.gemini'),
   vyniloAPIKey('api.vynilo'),
+  vinyloSession('vinylo.session'),
   gatewayAPIKey('api.gateway'),
   spotifyRefreshToken('spotify.refresh'),
   spotifyScope('spotify.scope');
@@ -696,7 +697,7 @@ class StorageMeter {
 /// the collection file, so the export format shared with iOS does not change.
 class QuizProgress {
   final SharedPreferences prefs;
-  static const _levelsKey = 'quiz.levels.v1', _daysKey = 'quiz.days.v1';
+  static const _levelsKey = 'quiz.levels.v1', _daysKey = 'quiz.days.v1', _scoresKey = 'quiz.scores.v1';
   QuizProgress(this.prefs);
 
   Map<String, int> get _levels {
@@ -709,6 +710,28 @@ class QuizProgress {
 
   int level(String songID) => _levels[songID] ?? 0;
 
+  /// Best score (0 to 100) per song and level, for the server's quiz progress.
+  Map<String, Map<int, int>> get scores {
+    try {
+      final raw = jsonDecode(prefs.getString(_scoresKey) ?? '{}') as Map;
+      return {
+        for (final e in raw.entries)
+          '${e.key}': {for (final l in (e.value as Map).entries) int.parse('${l.key}'): (l.value as num).toInt()},
+      };
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Keeps [score] when it beats the stored one; returns the best score.
+  int recordScore(String songID, int level, int score) {
+    final m = scores;
+    final best = max(score, m[songID]?[level] ?? 0);
+    (m[songID] ??= {})[level] = best;
+    prefs.setString(_scoresKey, jsonEncode({for (final e in m.entries) e.key: {for (final l in e.value.entries) '${l.key}': l.value}}));
+    return best;
+  }
+
   void pass(String songID, int level) {
     final m = _levels;
     if ((m[songID] ?? 0) >= level) return;
@@ -719,6 +742,8 @@ class QuizProgress {
   void forget(String songID) {
     final m = _levels..remove(songID);
     prefs.setString(_levelsKey, jsonEncode(m));
+    final s = scores..remove(songID);
+    prefs.setString(_scoresKey, jsonEncode({for (final e in s.entries) e.key: {for (final l in e.value.entries) '${l.key}': l.value}}));
   }
 
   /// Days with at least one finished quiz, as yyyy-mm-dd.

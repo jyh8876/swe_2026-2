@@ -223,7 +223,7 @@ class _MainTabViewState extends State<MainTabView> {
       CoverSelectRoute(:final draft) => CoverSelectView(draft: draft),
       TranslatingRoute(:final songID) => TranslatingView(songID: songID),
       SavedRoute(:final songID) => SavedView(songID: songID),
-      PlayerRoute(:final songID) => PlayerView(songID: songID),
+      PlayerRoute(:final songID, :final openTiming) => PlayerView(songID: songID, openTiming: openTiming),
       SpotifyListRoute(:final list) => SpotifyTracksView(list: list),
     };
     return MaterialPage(key: _keyFor(r, i), child: child);

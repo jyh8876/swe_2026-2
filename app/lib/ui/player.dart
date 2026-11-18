@@ -14,6 +14,7 @@ import '../core/playback.dart';
 import 'components.dart';
 import 'line_detail.dart';
 import 'player_controls.dart';
+import 'song_actions.dart';
 
 /// FG-06 Player · Lyrics, following the UI prototype (Figma 06 플레이어 · 가사 v2):
 /// dark drifting backdrop, lyrics that follow the current line until the user scrolls,
@@ -21,7 +22,8 @@ import 'player_controls.dart';
 /// Requirements: RQ-4, RQ-10, RQ-13, SSRD 3.1.1 modes, DCR-4, DCR-6, DCR-7.
 class PlayerView extends StatefulWidget {
   final String songID;
-  const PlayerView({super.key, required this.songID});
+  final bool openTiming;
+  const PlayerView({super.key, required this.songID, this.openTiming = false});
   @override
   State<PlayerView> createState() => _PlayerViewState();
 }
@@ -56,6 +58,12 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
       final song = _model.collection.song(id);
       if (song != null && _currentIndex(_model, song, _model.collection.linesFor(id)) != _lastIndex) setState(() {});
     });
+    if (widget.openTiming) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final song = _model.collection.song(id);
+        if (mounted && song != null) _timing(_model, song, _model.collection.linesFor(id));
+      });
+    }
   }
 
   @override
@@ -594,36 +602,39 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
     if (_model.isNowPlaying(song) && !_model.isPlayingSong(song)) _model.togglePlaySong(song);
   }
 
-  // ── Menu: timing, wrong lyrics, retranslate, conquer (DCR-4, RQ-10, RQ-13) ──
+  // ── Song settings (Notion 11/19): edit, cover, retranslate, report, sync, quiz; conquer (RQ-13) ──
 
   Future<void> _menu(AppModel model, Song song, List<LyricLine> lines) async {
     final canConquer = model.canMarkConquered(id) || _session.linesReached.length >= max(1, (lines.length * 0.9).floor());
     final action = await showActionSheet<String>(
       context,
       title: tr('엔진: {0}', [EngineFactory.label(model.settings.engine)]),
-      message: tr('타이밍 조절 (현재 {0}{1}초)', [song.offset >= 0 ? '+' : '', song.offset.toStringAsFixed(1)]),
       actions: [
-        SheetAction(tr('가사 0.5초 빠르게'), 'faster', icon: Icons.remove),
-        SheetAction(tr('가사 0.5초 느리게'), 'slower', icon: Icons.add),
-        if (song.offset != 0) SheetAction(tr('타이밍 초기화'), 'reset', icon: Icons.restart_alt),
-        SheetAction(tr('탭으로 싱크 만들기'), 'record', icon: Icons.touch_app_outlined),
-        SheetAction(tr('가사가 이상해요?'), 'wrong', icon: Icons.help_outline),
+        SheetAction(tr('노래 수정'), 'edit', icon: Icons.edit_outlined),
+        SheetAction(tr('앨범 커버 바꾸기'), 'cover', icon: Icons.album_outlined),
         SheetAction(tr('현재 엔진으로 다시 번역'), 'retranslate', icon: Icons.translate),
+        SheetAction(tr('AI 번역 신고하기'), 'report', icon: Icons.flag_outlined),
+        SheetAction(tr('싱크 맞추기'), 'timing', icon: Icons.av_timer),
+        SheetAction(tr('이 노래 퀴즈 풀기'), 'quiz', icon: Icons.quiz_outlined, enabled: lines.isNotEmpty),
+        SheetAction(tr('가사가 이상해요?'), 'wrong', icon: Icons.help_outline),
         if (song.isConquered)
           SheetAction(tr('정복 취소'), 'unconquer', icon: Icons.undo)
         else
           SheetAction(tr('이 노래 정복!'), 'conquer', icon: Icons.emoji_events_outlined, enabled: canConquer),
       ],
     );
+    if (!mounted) return;
     switch (action) {
-      case 'faster':
-        model.setOffset(id, song.offset - SyncEngine.offsetStep);
-      case 'slower':
-        model.setOffset(id, song.offset + SyncEngine.offsetStep);
-      case 'reset':
-        model.setOffset(id, 0);
-      case 'record':
-        _startRecording(song, lines);
+      case 'edit':
+        await showEditSong(context, song);
+      case 'cover':
+        await showCoverPicker(context, song);
+      case 'report':
+        await showReportTranslation(context, id);
+      case 'timing':
+        await _timing(model, song, lines);
+      case 'quiz':
+        openSongQuiz(context, song);
       case 'wrong':
         model.push(SearchRoute('${song.title} ${song.artist}'));
       case 'retranslate':
@@ -632,6 +643,39 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
         model.setConquered(id, false);
       case 'conquer':
         _conquer();
+    }
+  }
+
+  /// Timing: shift the lyrics by half seconds (the sheet stays open for repeated steps), reset,
+  /// or tap along to make a sync (RQ-10).
+  Future<void> _timing(AppModel model, Song song, List<LyricLine> lines) async {
+    while (mounted) {
+      final s = model.collection.song(id) ?? song;
+      final action = await showActionSheet<String>(
+        context,
+        title: tr('싱크 맞추기'),
+        message: tr('타이밍 조절 (현재 {0}{1}초)', [s.offset >= 0 ? '+' : '', s.offset.toStringAsFixed(1)]),
+        actions: [
+          SheetAction(tr('가사 0.5초 빠르게'), 'faster', icon: Icons.remove),
+          SheetAction(tr('가사 0.5초 느리게'), 'slower', icon: Icons.add),
+          if (s.offset != 0) SheetAction(tr('타이밍 초기화'), 'reset', icon: Icons.restart_alt),
+          SheetAction(tr('탭으로 싱크 만들기'), 'record', icon: Icons.touch_app_outlined),
+        ],
+      );
+      switch (action) {
+        case 'faster':
+          model.setOffset(id, s.offset - SyncEngine.offsetStep);
+        case 'slower':
+          model.setOffset(id, s.offset + SyncEngine.offsetStep);
+        case 'reset':
+          model.setOffset(id, 0);
+          return;
+        case 'record':
+          _startRecording(s, lines);
+          return;
+        default:
+          return;
+      }
     }
   }
 

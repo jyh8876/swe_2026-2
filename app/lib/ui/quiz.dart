@@ -193,7 +193,7 @@ class _QuizSessionViewState extends State<QuizSessionView> {
     final model = context.readModel;
     model.recordQuizActivity();
     final passed = correct >= QuizBuilder.passMark.clamp(1, questions.length);
-    if (passed) conqueredNow = model.passQuizLevel(widget.songID, level);
+    if (passed) conqueredNow = model.passQuizLevel(widget.songID, level, score: (correct * 100 / questions.length).round());
     setState(() => finished = true);
   }
 

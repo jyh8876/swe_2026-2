@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:lyrics_translator/app/account.dart';
@@ -68,12 +69,24 @@ void main() {
         }));
     setUp(() => sent = []);
 
-    test('register sends the ID token and the Apple name', () async {
-      await api(200, '{"userId":"apple:1"}').register('tok', name: 'Kim');
+    test('register sends the ID token, the Apple name and the country, and returns a session', () async {
+      final s = await api(200, '{"user":{"userId":"apple:1"},"session":{"token":"sess","expiresAt":4102444800}}').register('tok', name: 'Kim', country: 'KR');
       expect(sent.single.method, 'POST');
       expect(sent.single.url.toString(), 'https://api.example.com/v1/me');
       expect(sent.single.headers['authorization'], 'Bearer tok');
-      expect(jsonDecode(sent.single.body), {'name': 'Kim'});
+      expect(jsonDecode(sent.single.body), {'name': 'Kim', 'country': 'KR'});
+      expect(s.token, 'sess');
+      expect(AccountSession.decode(s.encode())!.expiresAt, s.expiresAt);
+      await expectLater(api(200, '{}').register('tok'), throwsA(isA<AccountApiException>()));
+    });
+
+    test('song, quiz and conquered calls carry metadata only', () async {
+      final a = api(200);
+      await a.putSong('sess', songID: 's 1', title: 'T', artist: 'A', addedAt: DateTime.utc(2026, 11, 20));
+      await a.putQuiz('sess', 's1', 3, score: 80);
+      await a.setConquered('sess', 's1', null);
+      expect(sent.map((r) => '${r.method} ${r.url.path}'), ['PUT /v1/songs/s%201', 'PUT /v1/quiz/s1/3', 'DELETE /v1/conquered/s1']);
+      expect(jsonDecode(sent.first.body), {'title': 'T', 'artist': 'A', 'addedAt': '2026-11-20T00:00:00.000Z'});
     });
 
     test('delete sends the Apple authorization code', () async {
@@ -91,18 +104,57 @@ void main() {
   group('model', () {
     late AppModel model;
     late List<http.Request> sent;
+    const session = '{"user":{},"session":{"token":"sess","expiresAt":4102444800}}';
+    http.Client server() => MockClient((r) async {
+          sent.add(r);
+          return http.Response(r.url.path == '/v1/me' && r.method == 'POST' ? session : '{}', 200);
+        });
     setUp(() async {
       SharedPreferences.setMockInitialValues({});
+      FlutterSecureStorage.setMockInitialValues({});
       model = AppModel.test(
           collection: CollectionSnapshot(), settings: AppSettings(), prefs: await SharedPreferences.getInstance(), baseDir: Directory.systemTemp.createTempSync());
       sent = [];
     });
 
     test('sign-in registers on the server first, then keeps the account', () async {
-      model.accountApi = AccountApi(base: 'https://api.example.com', client: MockClient((r) async => (sent..add(r)).isEmpty ? http.Response('', 500) : http.Response('{}', 200)));
+      model.accountApi = AccountApi(base: 'https://api.example.com', client: server());
       await model.completeSignIn(const SignInResult(AccountInfo(provider: 'apple', id: '001.x', name: 'Kim'), idToken: 'tok', authorizationCode: 'c'));
       expect(sent.single.headers['authorization'], 'Bearer tok');
       expect(model.account?.provider, 'apple');
+    });
+
+    test('after sign-in, songs and progress go to the server with the session, lyrics never', () async {
+      final id = model.addSong(AddSongDraft()
+        ..title = 'Day Off'
+        ..artist = 'Band'
+        ..lyrics = 'secret lyric line');
+      model.accountApi = AccountApi(base: 'https://api.example.com', client: server());
+      await model.completeSignIn(const SignInResult(AccountInfo(provider: 'apple', id: '1'), idToken: 'tok'));
+      // Full sync of the song added before sign-in.
+      expect(sent.map((r) => '${r.method} ${r.url.path}'), ['POST /v1/me', 'PUT /v1/songs/$id']);
+      model.setConquered(id, true);
+      model.passQuizLevel(id, 1, score: 90);
+      model.editSong(id, title: 'Day Off (Live)', artist: 'Band');
+      await model.reportTranslation(id, reason: ReportReason.offensive, lineIndex: 0, comment: 'too strong');
+      await pumpEventQueue();
+      expect(sent.skip(2).map((r) => '${r.method} ${r.url.path}'),
+          containsAll(['PUT /v1/conquered/$id', 'PUT /v1/quiz/$id/1', 'PUT /v1/songs/$id', 'POST /v1/reports']));
+      expect(sent.skip(1).every((r) => r.headers['authorization'] == 'Bearer sess'), isTrue);
+      expect(sent.any((r) => r.body.contains('secret lyric')), isFalse);
+      final report = jsonDecode(sent.firstWhere((r) => r.url.path == '/v1/reports').body) as Map;
+      expect([report['reason'], report['lineIndex'], report['title']], ['offensive', 0, 'Day Off (Live)']);
+      expect(model.wasReported(id, 0), isTrue);
+    });
+
+    test('a report needs the server and a sign-in', () async {
+      final id = model.addSong(AddSongDraft()
+        ..title = 'T'
+        ..artist = 'A'
+        ..lyrics = 'x');
+      await expectLater(model.reportTranslation(id, reason: ReportReason.wrong), throwsA(isA<AccountApiException>().having((e) => e.message, 'm', 'not configured')));
+      model.accountApi = AccountApi(base: 'https://api.example.com', client: server());
+      await expectLater(model.reportTranslation(id, reason: ReportReason.wrong), throwsA(isA<AccountApiException>().having((e) => e.status, 's', 401)));
     });
 
     test('a server failure leaves the app signed out', () async {

@@ -7,6 +7,7 @@ import '../app/theme.dart';
 import '../core/llm.dart';
 import '../core/models.dart';
 import 'player_controls.dart';
+import 'song_actions.dart';
 
 /// Opens FG-07 as the prototype's sheet: opens at about two thirds (06-1), drag up for full (06-2).
 /// The player controls and the replay/save buttons stay fixed at the bottom.
@@ -129,6 +130,21 @@ class _LineDetailViewState extends State<LineDetailView> {
                   if (translation != null) ...[
                     const SizedBox(height: 8),
                     Text(translation, style: TextStyle(fontSize: 14, height: 18 / 14, letterSpacing: -0.21, color: t.textSecondary)),
+                    const SizedBox(height: 4),
+                    // Report this line's AI translation (Notion 11/19).
+                    TextButton.icon(
+                      onPressed: model.wasReported(widget.songID, widget.index)
+                          ? null
+                          : () => showReportTranslation(context, widget.songID, lineIndex: widget.index),
+                      style: TextButton.styleFrom(
+                        foregroundColor: t.textTertiary,
+                        padding: EdgeInsets.zero,
+                        minimumSize: const Size(0, 32),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      icon: const Icon(Icons.flag_outlined, size: 16),
+                      label: Text(model.wasReported(widget.songID, widget.index) ? tr('신고함') : tr('번역 신고'), style: const TextStyle(fontSize: 12)),
+                    ),
                   ],
                 ]),
               ),

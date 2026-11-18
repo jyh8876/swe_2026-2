@@ -10,6 +10,7 @@ import '../app/theme.dart';
 import '../core/collection.dart';
 import '../core/models.dart';
 import 'components.dart';
+import 'song_actions.dart';
 import 'covers.dart';
 import 'share_card.dart';
 import 'spotify_library.dart';
@@ -800,31 +801,37 @@ class _List extends StatelessWidget {
 
 Future<void> showSongMenu(BuildContext context, Song song) async {
   final model = context.readModel;
+  final hasLines = model.collection.linesFor(song.id).isNotEmpty;
   final action = await showActionSheet<String>(context, title: song.title, actions: [
+    SheetAction(tr('노래 수정'), 'edit', icon: Icons.edit_outlined),
+    SheetAction(tr('앨범 커버 바꾸기'), 'cover', icon: Icons.album_outlined),
+    if (song.status == SongStatus.failed) SheetAction(tr('번역 재시도'), 'retry', icon: Icons.refresh),
+    SheetAction(tr('현재 엔진으로 다시 번역'), 'retranslate', icon: Icons.translate),
+    SheetAction(tr('AI 번역 신고하기'), 'report', icon: Icons.flag_outlined),
+    SheetAction(tr('싱크 맞추기'), 'timing', icon: Icons.av_timer, enabled: hasLines),
+    SheetAction(tr('이 노래 퀴즈 풀기'), 'quiz', icon: Icons.quiz_outlined, enabled: hasLines),
     if (song.isConquered)
       SheetAction(tr('정복 취소'), 'unconquer', icon: Icons.undo)
     else if (model.canMarkConquered(song.id))
       SheetAction(tr('이 노래 정복!'), 'conquer', icon: Icons.emoji_events_outlined),
-    SheetAction(tr('앨범 커버 바꾸기'), 'cover', icon: Icons.album_outlined),
-    if (song.status == SongStatus.failed) SheetAction(tr('번역 재시도'), 'retry', icon: Icons.refresh),
-    SheetAction(tr('현재 엔진으로 다시 번역'), 'retranslate', icon: Icons.translate),
     SheetAction(tr('삭제'), 'delete', icon: Icons.delete_outline, destructive: true),
   ]);
   if (!context.mounted) return;
   switch (action) {
+    case 'edit':
+      await showEditSong(context, song);
     case 'unconquer':
       model.setConquered(song.id, false);
     case 'conquer':
       model.setConquered(song.id, true);
     case 'cover':
-      final t = context.theme;
-      await showModalBottomSheet<void>(
-        context: context,
-    useRootNavigator: true,
-        backgroundColor: t.background,
-        showDragHandle: true,
-        builder: (_) => SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 20), child: CoverPicker(songID: song.id))),
-      );
+      await showCoverPicker(context, song);
+    case 'report':
+      await showReportTranslation(context, song.id);
+    case 'timing':
+      model.push(PlayerRoute(song.id, openTiming: true));
+    case 'quiz':
+      openSongQuiz(context, song);
     case 'retry':
       model.startTranslation(song.id);
     case 'retranslate':
