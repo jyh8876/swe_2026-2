@@ -34,8 +34,15 @@ android {
         applicationId = "com.vinylo.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        // Pinned so a Flutter upgrade cannot move them: Android 7.0+ installs (test platforms need
+        // minSdk 33 or lower for their Android 13/14 devices), target Android 16 (API 36).
+        minSdk = 24
+        targetSdk = 36
+        // 64-bit only. Some plugins ship 32-bit libraries, but Flutter's engine is built for these
+        // two only; an armeabi-v7a split would install on 32-bit phones and crash at launch.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
         // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
