@@ -11,7 +11,10 @@
 #   TEAM_ID           Apple Team ID
 #   MUSICKIT_KEY_ID   MusicKit key ID
 #   MUSICKIT_P8       path to the MusicKit .p8 (read by the AWS CLI, never printed)
-#   GOOGLE_CLIENT_IDS comma-separated Google OAuth client IDs (web client); blank = sign-in off
+#   GOOGLE_CLIENT_IDS comma-separated Google OAuth client IDs (web client); blank = Google off
+#   APPLE_CLIENT_IDS  bundle IDs for Sign in with Apple (default com.vinylo.ios)
+#   SIWA_KEY_ID, SIWA_P8  Sign in with Apple key (optional): needed to revoke Apple tokens on
+#                     account deletion, as App Store guideline 5.1.1(v) requires
 set -euo pipefail
 cd "$(dirname "$0")"
 [ -f deploy.env ] && . ./deploy.env
@@ -22,6 +25,10 @@ TABLE="${TABLE:-vinylo-users}"
 PARAM="${PARAM:-/vinylo/musickit-p8}"
 : "${TEAM_ID:?set TEAM_ID}" "${MUSICKIT_KEY_ID:?set MUSICKIT_KEY_ID}" "${MUSICKIT_P8:?set MUSICKIT_P8}"
 GOOGLE_CLIENT_IDS="${GOOGLE_CLIENT_IDS:-}"
+APPLE_CLIENT_IDS="${APPLE_CLIENT_IDS:-com.vinylo.ios}"
+SIWA_KEY_ID="${SIWA_KEY_ID:-}"
+SIWA_P8="${SIWA_P8:-}"
+SIWA_PARAM="${SIWA_PARAM:-/vinylo/siwa-p8}"
 export AWS_REGION="$REGION" AWS_PAGER=""
 
 ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
@@ -30,6 +37,13 @@ echo "account $ACCOUNT, region $REGION"
 echo "1/6 MusicKit key -> SSM $PARAM (SecureString, standard tier)"
 aws ssm put-parameter --name "$PARAM" --type SecureString --tier Standard --overwrite \
   --value "file://$MUSICKIT_P8" >/dev/null
+if [ -n "$SIWA_KEY_ID" ] && [ -n "$SIWA_P8" ]; then
+  echo "    Sign in with Apple key -> SSM $SIWA_PARAM"
+  aws ssm put-parameter --name "$SIWA_PARAM" --type SecureString --tier Standard --overwrite \
+    --value "file://$SIWA_P8" >/dev/null
+else
+  SIWA_KEY_ID=""   # no key: accounts are deleted, but Apple tokens are not revoked
+fi
 
 echo "2/6 DynamoDB table $TABLE"
 if ! aws dynamodb describe-table --table-name "$TABLE" >/dev/null 2>&1; then
@@ -41,7 +55,7 @@ if ! aws dynamodb describe-table --table-name "$TABLE" >/dev/null 2>&1; then
   aws dynamodb wait table-exists --table-name "$TABLE"
 fi
 
-echo "3/6 IAM role $NAME-role (logs, this table, this parameter only)"
+echo "3/6 IAM role $NAME-role (logs, this table, these parameters only)"
 ROLE_ARN="arn:aws:iam::$ACCOUNT:role/$NAME-role"
 if ! aws iam get-role --role-name "$NAME-role" >/dev/null 2>&1; then
   aws iam create-role --role-name "$NAME-role" --assume-role-policy-document '{
@@ -57,7 +71,7 @@ aws iam put-role-policy --role-name "$NAME-role" --policy-name "$NAME-policy" --
     {\"Effect\":\"Allow\",\"Action\":[\"dynamodb:GetItem\",\"dynamodb:UpdateItem\",\"dynamodb:DeleteItem\"],
      \"Resource\":\"arn:aws:dynamodb:$REGION:$ACCOUNT:table/$TABLE\"},
     {\"Effect\":\"Allow\",\"Action\":\"ssm:GetParameter\",
-     \"Resource\":\"arn:aws:ssm:$REGION:$ACCOUNT:parameter$PARAM\"}]}"
+     \"Resource\":[\"arn:aws:ssm:$REGION:$ACCOUNT:parameter$PARAM\",\"arn:aws:ssm:$REGION:$ACCOUNT:parameter$SIWA_PARAM\"]}]}"
 # A new role takes a few seconds before Lambda can use it.
 [ "${NEW_ROLE:-0}" = 1 ] && sleep 12
 
@@ -68,7 +82,7 @@ aws logs put-retention-policy --log-group-name "/aws/lambda/$NAME" --retention-i
 echo "5/6 Lambda function $NAME"
 ZIP="$(mktemp -d)/function.zip"
 (cd src && zip -q -r "$ZIP" .)
-ENVJSON="{\"Variables\":{\"TEAM_ID\":\"$TEAM_ID\",\"MUSICKIT_KEY_ID\":\"$MUSICKIT_KEY_ID\",\"MUSICKIT_P8_PARAM\":\"$PARAM\",\"USERS_TABLE\":\"$TABLE\",\"GOOGLE_CLIENT_IDS\":\"$GOOGLE_CLIENT_IDS\"}}"
+ENVJSON="{\"Variables\":{\"TEAM_ID\":\"$TEAM_ID\",\"MUSICKIT_KEY_ID\":\"$MUSICKIT_KEY_ID\",\"MUSICKIT_P8_PARAM\":\"$PARAM\",\"USERS_TABLE\":\"$TABLE\",\"GOOGLE_CLIENT_IDS\":\"$GOOGLE_CLIENT_IDS\",\"APPLE_CLIENT_IDS\":\"$APPLE_CLIENT_IDS\",\"SIWA_KEY_ID\":\"$SIWA_KEY_ID\",\"SIWA_P8_PARAM\":\"$SIWA_PARAM\"}}"
 if aws lambda get-function --function-name "$NAME" >/dev/null 2>&1; then
   aws lambda update-function-code --function-name "$NAME" --zip-file "fileb://$ZIP" >/dev/null
   aws lambda wait function-updated --function-name "$NAME"

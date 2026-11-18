@@ -50,7 +50,7 @@ function idToken(claims, { kid = 'k1', key = google.privateKey } = {}) {
 const check = (t) => verifyGoogleIdToken(t, { jwks, audiences: ['web-client'], now });
 
 test('a valid Google ID token gives the profile', () => {
-  assert.deepEqual(check(idToken({})), { sub: '1234', email: 'u@example.com', emailVerified: true, name: 'User' });
+  assert.deepEqual(check(idToken({})), { provider: 'google', sub: '1234', email: 'u@example.com', emailVerified: true, name: 'User' });
 });
 
 test('Google ID tokens are rejected for the wrong audience, issuer, expiry, key or signature', () => {
@@ -76,4 +76,59 @@ test('Google keys are fetched again only after max-age', async () => {
   await cache.get(59_000);
   await cache.get(61_000);
   assert.equal(fetched, 2);
+});
+
+// ── Sign in with Apple ──
+import { appleClientSecret, revokeAppleTokens, tokenProvider, verifyIdToken } from '../src/core.mjs';
+
+function appleToken(claims) {
+  const h = Buffer.from(JSON.stringify({ alg: 'RS256', kid: 'k1' })).toString('base64url');
+  const p = Buffer.from(JSON.stringify({
+    iss: 'https://appleid.apple.com', aud: 'com.vinylo.ios', sub: '001234.abcd', email: 'x@privaterelay.appleid.com',
+    email_verified: 'true', iat: now / 1000, exp: now / 1000 + 600, ...claims,
+  })).toString('base64url');
+  return `${h}.${p}.${sign('sha256', Buffer.from(`${h}.${p}`), google.privateKey).toString('base64url')}`;
+}
+
+test('the issuer tells Google and Apple tokens apart', () => {
+  assert.equal(tokenProvider(idToken({})), 'google');
+  assert.equal(tokenProvider(appleToken({})), 'apple');
+  assert.equal(tokenProvider(appleToken({ iss: 'https://evil.example.com' })), null);
+});
+
+test('an Apple identity token for the app gives an apple: user without a name', () => {
+  const p = verifyIdToken(appleToken({}), { provider: 'apple', jwks, audiences: ['com.vinylo.ios'], now });
+  assert.equal(p.provider, 'apple');
+  assert.equal(p.name, null);
+  assert.equal(userRecord(p).userId, 'apple:001234.abcd');
+  assert.throws(() => verifyIdToken(appleToken({ aud: 'com.other.app' }), { provider: 'apple', jwks, audiences: ['com.vinylo.ios'], now }), /audience/);
+  // A Google token cannot pass as an Apple one.
+  assert.throws(() => verifyIdToken(idToken({ aud: 'com.vinylo.ios' }), { provider: 'apple', jwks, audiences: ['com.vinylo.ios'], now }), /issuer/);
+});
+
+test('Apple client secret: ES256, aud appleid.apple.com, sub = bundle ID', () => {
+  const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  const p8 = privateKey.export({ type: 'pkcs8', format: 'pem' });
+  const jwt = appleClientSecret({ p8, teamId: 'TEAM', keyId: 'SIWAKEY', clientId: 'com.vinylo.ios', now });
+  const [h, p] = jwt.split('.');
+  assert.deepEqual(part(h), { alg: 'ES256', kid: 'SIWAKEY' });
+  assert.equal(part(p).aud, 'https://appleid.apple.com');
+  assert.equal(part(p).sub, 'com.vinylo.ios');
+  assert.equal(part(p).iss, 'TEAM');
+});
+
+test('revocation exchanges the code, then revokes the refresh token', async () => {
+  const calls = [];
+  await revokeAppleTokens({
+    code: 'c1', clientId: 'com.vinylo.ios', clientSecret: 's',
+    post: async (url, form) => {
+      calls.push([url, form]);
+      return url.endsWith('/token') ? { status: 200, json: { refresh_token: 'r1' } } : { status: 200, json: {} };
+    },
+  });
+  assert.equal(calls[0][0], 'https://appleid.apple.com/auth/token');
+  assert.equal(calls[0][1].code, 'c1');
+  assert.equal(calls[1][0], 'https://appleid.apple.com/auth/revoke');
+  assert.deepEqual([calls[1][1].token, calls[1][1].token_type_hint], ['r1', 'refresh_token']);
+  await assert.rejects(revokeAppleTokens({ code: 'bad', clientId: 'x', clientSecret: 's', post: async () => ({ status: 400, json: { error: 'invalid_grant' } }) }), /invalid_grant/);
 });
