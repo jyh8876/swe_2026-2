@@ -3,12 +3,12 @@ import 'package:flutter/services.dart';
 
 import '../app/app_model.dart';
 import '../app/i18n.dart';
-import '../app/platform_services.dart';
 import '../app/theme.dart';
 import '../core/llm.dart';
 import '../core/lyrics.dart';
 import '../core/models.dart';
 import 'components.dart';
+import 'lyrics_browser.dart';
 
 /// FG-03 노래 추가 (Figma / GitHub cover-select-prototype): title, artist, lyrics with a
 /// "싱크 가사" switch, the translation language, then "커버 이미지 선택하기" (RQ-6).
@@ -71,7 +71,7 @@ class _AddSongViewState extends State<AddSongView> {
               ),
             ],
           ),
-          // The app fetches no lyrics: find an LRC on the web, copy, come back and paste.
+          // The app fetches no lyrics: the user finds an LRC in the in-app browser and takes it, or pastes.
           Wrap(
             spacing: 4,
             children: [
@@ -154,7 +154,15 @@ class _AddSongViewState extends State<AddSongView> {
     );
   }
 
-  Future<void> _searchWeb() => openLyricsWebSearch(context, title: _title.text, artist: _artist.text);
+  /// In-app browser on the LRC search; the lyrics taken there fill the field.
+  Future<void> _searchWeb() async {
+    final lyrics = await openLyricsBrowser(context, title: _title.text, artist: _artist.text);
+    if (!mounted || lyrics == null || lyrics.trim().isEmpty) return;
+    setState(() {
+      _lyrics.text = lyrics.trim();
+      _keepSync = true;
+    });
+  }
 
   /// Replaces the lyrics with the clipboard, as copied from a lyrics page.
   Future<void> _paste() async {
@@ -168,14 +176,6 @@ class _AddSongViewState extends State<AddSongView> {
   }
 }
 
-/// Opens the browser on a web search for the song's LRC lyrics ("artist title .lrc").
-Future<void> openLyricsWebSearch(BuildContext context, {required String title, String artist = ''}) async {
-  try {
-    await Links.open(LyricsWebSearch.url(title: title, artist: artist));
-  } catch (_) {
-    if (context.mounted) showMessage(context, tr('브라우저를 열지 못했어요.'));
-  }
-}
 
 /// Saves the drafted song with its cover and opens the translating screen. Shared by the cover
 /// screen; checks the engine, duplicates and the one-time cloud notice first.

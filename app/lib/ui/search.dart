@@ -9,8 +9,8 @@ import '../core/lyrics.dart';
 import '../core/models.dart';
 import '../core/playback.dart';
 import '../core/recommend.dart';
-import 'add_song.dart';
 import 'components.dart';
+import 'lyrics_browser.dart';
 import 'covers.dart';
 import 'library.dart';
 import 'spotify_library.dart';
@@ -77,7 +77,7 @@ class _SearchViewState extends State<SearchView> {
     return hint != null && _query.text.trim() == widget.initialQuery.trim() ? hint : null;
   }
 
-  /// Opens the web search for the LRC and the add screen, pre-filled, to paste into on return.
+  /// Opens the in-app browser on the LRC search, then the add screen with what was taken there.
   Future<void> _searchWeb() async {
     final q = _query.text.trim();
     if (q.isEmpty) return;
@@ -88,7 +88,7 @@ class _SearchViewState extends State<SearchView> {
       ..album = hint?.album
       ..duration = hint?.duration;
     final model = context.readModel;
-    await openLyricsWebSearch(context, title: draft.title, artist: draft.artist);
+    draft.lyrics = (await openLyricsBrowser(context, title: draft.title, artist: draft.artist))?.trim() ?? '';
     if (!mounted) return;
     model.push(AddRoute(draft));
   }
@@ -240,7 +240,7 @@ class _SearchViewState extends State<SearchView> {
               ),
             ),
             const SizedBox(width: 8),
-            Icon(Icons.open_in_new, size: 18, color: t.textTertiary),
+            Icon(Icons.chevron_right, size: 20, color: t.textTertiary),
           ],
         ),
       ),

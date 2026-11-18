@@ -281,6 +281,54 @@ class LyricsWebSearch {
 
   static Uri url({required String title, String artist = ''}) =>
       Uri.https('www.google.com', '/search', {'q': query(title: title, artist: artist)});
+
+  /// Typing in the in-app browser's bar: a web address opens as is, anything else is searched.
+  static Uri urlFor(String input) {
+    final t = input.trim();
+    final asUrl = RegExp(r'^(https?://)?[\w-]+(\.[\w-]+)+(/\S*)?$', caseSensitive: false);
+    if (asUrl.hasMatch(t) && !t.contains(' ')) return Uri.parse(t.startsWith('http') ? t : 'https://$t');
+    return Uri.https('www.google.com', '/search', {'q': t});
+  }
+}
+
+/// Finds lyrics in the text of a web page (in-app browser, "가져오기"). The user chose the page;
+/// what is found goes into the add screen on the phone and nowhere else.
+class PageLyrics {
+  static final _timed = RegExp(r'^\s*(\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\])+.*$');
+  static final _tag = RegExp(r'^\s*\[(ti|ar|al|by|offset|length|re|ve|au):.*\]\s*$', caseSensitive: false);
+
+  /// Minimum number of time-tagged lines for a page to count as an LRC.
+  static const minTimedLines = 5;
+
+  /// The LRC lines of [pageText] (tags such as [ti:] kept when they lead the block), or null when
+  /// the page has fewer than [minTimedLines] time-tagged lines. Pages that show several LRCs
+  /// (versions, translations) give the longest run of consecutive timed lines.
+  static String? lrc(String pageText) {
+    final lines = pageText.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
+    var best = <String>[], run = <String>[];
+    var gap = 0;
+    void close() {
+      if (run.where(_timed.hasMatch).length > best.where(_timed.hasMatch).length) best = run;
+      run = [];
+      gap = 0;
+    }
+
+    for (final raw in lines) {
+      final l = raw.trimRight();
+      if (_timed.hasMatch(l) || (run.isEmpty && _tag.hasMatch(l)) || (run.isNotEmpty && _tag.hasMatch(l) && run.every(_tag.hasMatch))) {
+        run.add(l.trimLeft());
+        gap = 0;
+      } else if (run.isNotEmpty && l.trim().isEmpty && gap < 1) {
+        // One blank line inside an LRC is kept out but does not end it.
+        gap++;
+      } else if (run.isNotEmpty) {
+        close();
+      }
+    }
+    close();
+    final timed = best.where(_timed.hasMatch).length;
+    return timed >= minTimedLines ? best.join('\n') : null;
+  }
 }
 
 /// Local provider backed by fixtures: the demo song in demo mode and tests, nothing in the

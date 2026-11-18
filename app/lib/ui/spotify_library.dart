@@ -6,8 +6,8 @@ import '../app/spotify_library.dart';
 import '../app/theme.dart';
 import '../core/lyrics.dart';
 import '../core/playback.dart';
-import 'add_song.dart';
 import 'components.dart';
+import 'lyrics_browser.dart';
 import 'covers.dart';
 
 /// Spotify album art from the network, with a generated cover while loading or on failure.
@@ -356,7 +356,7 @@ class _SpotifyTracksViewState extends State<SpotifyTracksView> {
       ..duration = track.duration
       ..coverURL = track.imageUrl
       ..spotifyTrackID = track.id;
-    await openLyricsWebSearch(context, title: draft.title, artist: draft.artist);
+    draft.lyrics = (await openLyricsBrowser(context, title: draft.title, artist: draft.artist))?.trim() ?? '';
     if (!mounted) return;
     model.push(AddRoute(draft));
   }
