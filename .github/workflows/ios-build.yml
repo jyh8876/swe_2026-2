@@ -4,7 +4,8 @@ name: iOS build
 
 on:
   push:
-    branches: [feature/ios-build]
+    branches: ['feature/**']
+    paths: ['app/**', '.github/workflows/ios-build.yml']
   pull_request:
     paths: ['app/**']
   workflow_dispatch:
