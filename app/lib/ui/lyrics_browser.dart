@@ -1,7 +1,4 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart' hide Route;
-import 'package:http/http.dart' as http;
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../app/i18n.dart';
@@ -10,8 +7,9 @@ import '../core/lyrics.dart';
 import 'components.dart';
 
 /// Opens the in-app browser (Android System WebView = Chromium, iOS WKWebView) on the web search
-/// for the song's LRC. Resolves to the lyrics the user took from a page, or null when they close
-/// it. Nothing is fetched by the app on its own: the user picks the page.
+/// for the song's LRC. Resolves to the text the user selected on a page, or null when they close
+/// it. The app never reads or extracts a page by itself (feedback 11/19 #13, option 2): only what
+/// the user selects is taken, as with copy and paste.
 Future<String?> openLyricsBrowser(BuildContext context, {required String title, String artist = ''}) {
   return Navigator.of(context, rootNavigator: true).push<String>(MaterialPageRoute(
     fullscreenDialog: true,
@@ -31,26 +29,42 @@ class _LyricsBrowserViewState extends State<LyricsBrowserView> {
   late final _bar = TextEditingController(text: widget.query);
   final _barFocus = FocusNode();
   int _progress = 0;
-  bool _canBack = false, _canForward = false;
 
-  /// LRC found on the current page (or in an opened .lrc file), offered in the banner.
-  String? _found;
+  /// The text the user has selected on the page, reported by the page as it changes.
+  String _selection = '';
+
+  /// Reports the selection to the app whenever it changes (no page content is read otherwise).
+  static const _watchSelection = """
+(function () {
+  if (window.__vinyloSel) return;
+  window.__vinyloSel = true;
+  var t = null;
+  document.addEventListener('selectionchange', function () {
+    clearTimeout(t);
+    t = setTimeout(function () {
+      VinyloSelection.postMessage(window.getSelection ? String(window.getSelection()) : '');
+    }, 150);
+  });
+})();""";
 
   @override
   void initState() {
     super.initState();
     _web = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..addJavaScriptChannel('VinyloSelection', onMessageReceived: (m) {
+        if (mounted && m.message != _selection) setState(() => _selection = m.message);
+      })
       ..setNavigationDelegate(NavigationDelegate(
         onProgress: (p) {
           if (mounted) setState(() => _progress = p);
         },
         onPageStarted: (url) {
           if (!mounted) return;
-          setState(() => _found = null);
+          setState(() => _selection = '');
           if (!_barFocus.hasFocus) _bar.text = _display(url);
         },
-        onPageFinished: (_) => _afterLoad(),
+        onPageFinished: (_) => _web.runJavaScript(_watchSelection).catchError((_) {}),
         onNavigationRequest: _onNavigation,
       ))
       ..loadRequest(LyricsWebSearch.urlFor(widget.query));
@@ -75,70 +89,21 @@ class _LyricsBrowserViewState extends State<LyricsBrowserView> {
     final u = Uri.tryParse(r.url);
     // App links (intent://, market://) would leave the app; stay on the web.
     if (u == null || (u.scheme != 'https' && u.scheme != 'http')) return NavigationDecision.prevent;
-    // An .lrc file would be a download, which a web view cannot show: read it and offer it.
+    // A file download (.lrc) cannot be shown here, and the app does not fetch it itself.
     if (u.path.toLowerCase().endsWith('.lrc')) {
-      _readLrcFile(u);
+      if (mounted) showMessage(context, tr('파일은 열 수 없어요. 가사가 보이는 페이지에서 선택해 주세요.'));
       return NavigationDecision.prevent;
     }
     return NavigationDecision.navigate;
   }
 
-  Future<void> _readLrcFile(Uri u) async {
-    try {
-      final r = await http.get(u).timeout(const Duration(seconds: 15));
-      final text = r.statusCode == 200 ? utf8.decode(r.bodyBytes, allowMalformed: true) : '';
-      final lrc = PageLyrics.lrc(text);
-      if (!mounted) return;
-      if (lrc == null) {
-        showMessage(context, tr('이 파일에서 가사를 찾지 못했어요.'));
-      } else {
-        setState(() => _found = lrc);
-      }
-    } catch (_) {
-      if (mounted) showMessage(context, tr('파일을 열지 못했어요.'));
-    }
-  }
+  int get _selectedLines => _selection.split('\n').where((l) => l.trim().isNotEmpty).length;
 
-  Future<void> _afterLoad() async {
-    if (!mounted) return;
-    final back = await _web.canGoBack(), forward = await _web.canGoForward();
-    final lrc = PageLyrics.lrc(await _pageText('document.body ? document.body.innerText : ""'));
-    if (!mounted) return;
-    setState(() {
-      _canBack = back;
-      _canForward = forward;
-      _found = lrc;
-    });
-  }
-
-  /// Runs [js] and returns its string result (Android hands it back JSON-quoted).
-  Future<String> _pageText(String js) async {
-    try {
-      final r = await _web.runJavaScriptReturningResult(js);
-      if (r is String && r.length >= 2 && r.startsWith('"')) {
-        try {
-          return jsonDecode(r) as String;
-        } catch (_) {}
-      }
-      return r is String ? r : '';
-    } catch (_) {
-      return '';
-    }
-  }
-
-  /// "가사 가져오기": the selected text, else the LRC on the page.
+  /// "선택한 가사 가져오기": the text the user selected, as it is.
   Future<void> _take() async {
-    final selected = (await _pageText('window.getSelection ? window.getSelection().toString() : ""')).trim();
-    if (!mounted) return;
-    if (selected.isNotEmpty) {
-      Navigator.pop(context, PageLyrics.lrc(selected) ?? selected);
-      return;
-    }
-    if (_found != null) {
-      Navigator.pop(context, _found);
-      return;
-    }
-    showMessage(context, tr('가사 부분을 길게 눌러 선택한 다음 다시 눌러 주세요.'));
+    final text = _selection.trim();
+    if (text.isEmpty) return;
+    Navigator.pop(context, PageLyrics.lrc(text) ?? text);
   }
 
   void _go(String input) {
@@ -147,85 +112,263 @@ class _LyricsBrowserViewState extends State<LyricsBrowserView> {
     _web.loadRequest(LyricsWebSearch.urlFor(input));
   }
 
+  /// The system back button goes back in the page history before it closes the browser.
+  Future<void> _back() async {
+    if (await _web.canGoBack()) {
+      await _web.goBack();
+    } else if (mounted) {
+      Navigator.pop(context);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
-    final found = _found;
-    final timedLines = found == null ? 0 : found.split('\n').where((l) => RegExp(r'^\[\d').hasMatch(l)).length;
-    return Scaffold(
-      backgroundColor: t.background,
-      appBar: AppBar(
+    final n = _selectedLines;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _back();
+      },
+      child: Scaffold(
         backgroundColor: t.background,
-        titleSpacing: 0,
-        leading: IconButton(tooltip: tr('닫기'), icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
-        title: Container(
-          height: 40,
-          margin: const EdgeInsets.only(right: 12),
-          decoration: BoxDecoration(color: t.surfaceRaised, borderRadius: BorderRadius.circular(20)),
-          child: TextField(
-            controller: _bar,
-            focusNode: _barFocus,
-            textInputAction: TextInputAction.search,
-            onSubmitted: _go,
-            onTap: () => _bar.selection = TextSelection(baseOffset: 0, extentOffset: _bar.text.length),
-            style: TextStyle(fontSize: 14, color: t.textPrimary),
-            decoration: InputDecoration(
-              border: InputBorder.none,
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              prefixIcon: Icon(Icons.search, size: 18, color: t.textTertiary),
-              prefixIconConstraints: const BoxConstraints(minWidth: 36),
+        appBar: AppBar(
+          backgroundColor: t.background,
+          titleSpacing: 0,
+          leading: IconButton(tooltip: tr('닫기'), icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+          title: Container(
+            height: 40,
+            margin: const EdgeInsets.only(right: 12),
+            decoration: BoxDecoration(color: t.surfaceRaised, borderRadius: BorderRadius.circular(20)),
+            child: TextField(
+              controller: _bar,
+              focusNode: _barFocus,
+              textInputAction: TextInputAction.search,
+              onSubmitted: _go,
+              onTap: () => _bar.selection = TextSelection(baseOffset: 0, extentOffset: _bar.text.length),
+              style: TextStyle(fontSize: 14, color: t.textPrimary),
+              decoration: InputDecoration(
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                prefixIcon: Icon(Icons.search, size: 18, color: t.textTertiary),
+                prefixIconConstraints: const BoxConstraints(minWidth: 36),
+              ),
             ),
           ),
-        ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(2),
-          child: _progress > 0 && _progress < 100
-              ? LinearProgressIndicator(value: _progress / 100, minHeight: 2, color: t.brand, backgroundColor: Colors.transparent)
-              : const SizedBox(height: 2),
-        ),
-      ),
-      body: Column(children: [
-        Expanded(child: WebViewWidget(controller: _web)),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 200),
-          child: found == null
-              ? const SizedBox.shrink()
-              : Material(
-                  key: const ValueKey('found'),
-                  color: t.surfaceRaised,
-                  child: ListTile(
-                    leading: Icon(Icons.lyrics_outlined, color: t.brand),
-                    title: Text(tr('싱크 가사를 찾았어요'), style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: t.textPrimary)),
-                    subtitle: Text(tr('{0}줄 · 시간 정보 포함', ['$timedLines']), style: TextStyle(fontSize: 12, color: t.textSecondary)),
-                    trailing: FilledButton(
-                      onPressed: () => Navigator.pop(context, found),
-                      style: FilledButton.styleFrom(backgroundColor: t.accent, foregroundColor: t.onAccent),
-                      child: Text(tr('이 가사 사용')),
-                    ),
-                  ),
-                ),
-        ),
-        SafeArea(
-          top: false,
-          child: Container(
-            decoration: BoxDecoration(color: t.background, border: Border(top: BorderSide(color: t.stroke))),
-            padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
-            child: Row(children: [
-              IconButton(tooltip: tr('뒤로'), onPressed: _canBack ? _web.goBack : null, icon: const Icon(Icons.arrow_back_ios_new, size: 18)),
-              IconButton(tooltip: tr('앞으로'), onPressed: _canForward ? _web.goForward : null, icon: const Icon(Icons.arrow_forward_ios, size: 18)),
-              IconButton(tooltip: tr('새로고침'), onPressed: _web.reload, icon: const Icon(Icons.refresh, size: 20)),
-              const Spacer(),
-              FilledButton.icon(
-                onPressed: _take,
-                style: FilledButton.styleFrom(backgroundColor: t.accent, foregroundColor: t.onAccent),
-                icon: const Icon(Icons.download_rounded, size: 18),
-                label: Text(tr('가사 가져오기')),
-              ),
-            ]),
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(2),
+            child: _progress > 0 && _progress < 100
+                ? LinearProgressIndicator(value: _progress / 100, minHeight: 2, color: t.brand, backgroundColor: Colors.transparent)
+                : const SizedBox(height: 2),
           ),
         ),
+        body: Column(children: [
+          // What to do, visible from the start (13-1).
+          Container(
+            width: double.infinity,
+            color: t.surfaceRaised,
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+            child: Row(children: [
+              _step('1', tr('가사를 길게 눌러 선택')),
+              Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Icon(Icons.arrow_forward, size: 14, color: t.textTertiary)),
+              _step('2', tr('가져오기')),
+            ]),
+          ),
+          Expanded(child: WebViewWidget(controller: _web)),
+          SafeArea(
+            top: false,
+            child: Container(
+              decoration: BoxDecoration(color: t.background, border: Border(top: BorderSide(color: t.stroke))),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: FilledButton.icon(
+                  onPressed: n == 0 ? null : _take,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: t.accent,
+                    foregroundColor: t.onAccent,
+                    disabledBackgroundColor: t.surfaceRaised,
+                    disabledForegroundColor: t.textTertiary,
+                  ),
+                  icon: const Icon(Icons.download_rounded, size: 18),
+                  label: Text(n == 0 ? tr('가사를 선택해 주세요') : tr('선택한 가사 가져오기 ({0}줄)', ['$n'])),
+                ),
+              ),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _step(String n, String text) {
+    final t = context.theme;
+    return Flexible(
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          width: 18,
+          height: 18,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: t.accent, shape: BoxShape.circle),
+          child: Text(n, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: t.onAccent)),
+        ),
+        const SizedBox(width: 6),
+        Flexible(child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: t.textPrimary))),
       ]),
     );
+  }
+}
+
+/// "가사는 어떻게 불러오나요?" (feedback 11/19 #9): search with .lrc, copy the timed lyrics,
+/// paste. The steps play one after another; the motion graphics from design replace them later.
+Future<void> showLyricsGuide(BuildContext context) =>
+    Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => const LyricsGuideView()));
+
+class LyricsGuideView extends StatefulWidget {
+  const LyricsGuideView({super.key});
+  @override
+  State<LyricsGuideView> createState() => _LyricsGuideViewState();
+}
+
+class _LyricsGuideViewState extends State<LyricsGuideView> with SingleTickerProviderStateMixin {
+  late final _play = AnimationController(vsync: this, duration: const Duration(seconds: 9));
+
+  @override
+  void initState() {
+    super.initState();
+    _play.repeat();
+  }
+
+  @override
+  void dispose() {
+    _play.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    final still = MediaQuery.of(context).disableAnimations;
+    return Scaffold(
+      appBar: AppBar(title: Text(tr('가사 불러오는 법')), centerTitle: true),
+      body: AnimatedBuilder(
+        animation: _play,
+        builder: (context, _) {
+          // Which step is playing: each takes a third of the loop.
+          final active = still ? -1 : (_play.value * 3).floor();
+          final within = still ? 1.0 : (_play.value * 3) % 1;
+          return ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 24), children: [
+            _card(0, active, tr('노래를 .lrc 와 함께 검색해요'), tr('노래 추가 화면의 "가사 검색" 버튼을 누르면 제목·아티스트 뒤에 .lrc 를 붙여 검색해요.'),
+                _searchBar('Count on Me Bruno Mars .lrc', active == 0 ? within : 1)),
+            _card(1, active, tr('시간이 붙은 가사를 길게 눌러 복사해요'), tr('[00:13.04] 처럼 시간이 붙은 가사가 LRC 가사예요. 길게 눌러 처음부터 끝까지 선택해요.'),
+                _lrcSample(active == 1 ? within : 1)),
+            _card(2, active, tr('가사 칸에 붙여넣어요'), tr('시간 정보가 있으면 자동으로 알아보고, 노래에 맞춰 가사가 넘어가요.'), _pasted(active == 2 ? within : 1)),
+            const SizedBox(height: 8),
+            Text(tr('LRC 가사가 없으면 일반 가사를 붙여넣어도 돼요. 재생 화면에서 탭으로 싱크를 맞출 수 있어요.'),
+                style: TextStyle(fontSize: 13, color: t.textSecondary, height: 1.5)),
+          ]);
+        },
+      ),
+    );
+  }
+
+  Widget _card(int i, int active, String title, String body, Widget demo) {
+    final t = context.theme;
+    final on = active == i || active < 0;
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 250),
+      opacity: on ? 1 : 0.45,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: t.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: active == i ? t.accent : t.stroke),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(
+              width: 22,
+              height: 22,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: t.accent, shape: BoxShape.circle),
+              child: Text('${i + 1}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: t.onAccent)),
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: Text(title, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: t.textPrimary))),
+          ]),
+          const SizedBox(height: 6),
+          Text(body, style: TextStyle(fontSize: 13, color: t.textSecondary, height: 1.45)),
+          const SizedBox(height: 12),
+          demo,
+        ]),
+      ),
+    );
+  }
+
+  /// The query typing itself out.
+  Widget _searchBar(String q, double p) {
+    final t = context.theme;
+    final shown = q.substring(0, (q.length * (p * 1.6).clamp(0.0, 1.0)).round());
+    return Container(
+      height: 40,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(color: t.background, borderRadius: BorderRadius.circular(20)),
+      child: Row(children: [
+        Icon(Icons.search, size: 18, color: t.textTertiary),
+        const SizedBox(width: 8),
+        Expanded(child: Text(shown, maxLines: 1, overflow: TextOverflow.clip, style: TextStyle(fontSize: 13, color: t.textPrimary))),
+      ]),
+    );
+  }
+
+  static const _sample = ['[00:13.04] You can count on me like one, two, three', "[00:16.52] I'll be there", '[00:18.11] And I know when I need it'];
+
+  /// The LRC lines getting selected one by one.
+  Widget _lrcSample(double p) {
+    final t = context.theme;
+    final selected = (p * 1.4 * _sample.length).floor();
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(color: t.background, borderRadius: BorderRadius.circular(8)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        for (var i = 0; i < _sample.length; i++)
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 1),
+            color: i < selected ? t.accent.withValues(alpha: 0.25) : Colors.transparent,
+            child: Text(_sample[i], style: TextStyle(fontSize: 12, fontFamily: 'monospace', color: t.textPrimary)),
+          ),
+      ]),
+    );
+  }
+
+  /// The pasted lyrics and the recognised mark.
+  Widget _pasted(double p) {
+    final t = context.theme;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), border: Border.all(color: t.stroke)),
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 200),
+          opacity: p > 0.25 ? 1 : 0,
+          child: Text(_sample.join('\n'), style: TextStyle(fontSize: 12, fontFamily: 'monospace', color: t.textPrimary)),
+        ),
+      ),
+      const SizedBox(height: 8),
+      AnimatedOpacity(
+        duration: const Duration(milliseconds: 200),
+        opacity: p > 0.5 ? 1 : 0,
+        child: Row(children: [
+          Icon(Icons.check_circle_rounded, size: 16, color: t.brandInk),
+          const SizedBox(width: 6),
+          Text(tr('싱크 가사를 인식했어요'), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: t.brandInk)),
+        ]),
+      ),
+    ]);
   }
 }

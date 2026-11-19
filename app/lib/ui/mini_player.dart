@@ -6,7 +6,6 @@ import 'package:flutter/material.dart' hide Route;
 import '../app/app_model.dart';
 import '../app/i18n.dart';
 import '../app/theme.dart';
-import '../core/lyrics.dart';
 import '../core/models.dart';
 import '../core/playback.dart';
 import 'components.dart';
@@ -66,9 +65,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                   behavior: HitTestBehavior.opaque,
                   onTap: () {
                     model.selectTab(AppTab.library);
-                    model.push(song != null
-                        ? PlayerRoute(song.id)
-                        : SearchRoute('${TrackNormalizer.normalize(snap.track.title)} ${TrackNormalizer.primaryArtist(snap.track.artist)}', snap.track));
+                    song != null ? model.push(PlayerRoute(song.id)) : model.openAdd(snap.track);
                   },
                   child: Row(children: [
                     SizedBox(

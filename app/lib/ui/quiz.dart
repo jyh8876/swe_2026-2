@@ -45,7 +45,7 @@ class QuizHomeView extends StatelessWidget {
               const SizedBox(height: 20),
               SecondaryButton(tr('노래 추가하기'), icon: Icons.add, onPressed: () {
                 model.selectTab(AppTab.library);
-                model.push(const SearchRoute());
+                model.openAdd();
               }),
             ]),
           )

@@ -76,7 +76,7 @@ class _SavedViewState extends State<SavedView> with SingleTickerProviderStateMix
                     child: RecommendRow(
                       title: tr('이 노래가 좋다면'),
                       entries: model.recommendations(after: song, limit: 6),
-                      onSelect: (e) => model.setPath([SearchRoute('${e.title} ${e.artist}', e.trackKey)]),
+                      onSelect: (e) => model.openAdd(e.trackKey, true),
                     ),
                   ),
                 ),

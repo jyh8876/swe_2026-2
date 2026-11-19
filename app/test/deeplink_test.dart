@@ -13,11 +13,11 @@ void main() {
         collection: CollectionSnapshot(), settings: AppSettings()..hasOnboarded = true, prefs: await SharedPreferences.getInstance(), baseDir: Directory.systemTemp.createTempSync());
   });
 
-  test('vynilo://open/search opens the add-song search with the query', () {
+  test('vynilo://open/search opens the add screen with the query as the title (no search step)', () {
     model.selectTab(AppTab.my);
     expect(model.openLink(Uri.parse('vynilo://open/search?q=Coldplay%20Yellow')), isTrue);
     expect(model.selectedTab, AppTab.library);
-    expect((model.libraryPath.single as SearchRoute).prefill, 'Coldplay Yellow');
+    expect((model.libraryPath.single as AddRoute).draft.title, 'Coldplay Yellow');
   });
 
   test('vynilo://open/add and /my open the add screen and My page', () {

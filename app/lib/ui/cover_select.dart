@@ -26,7 +26,11 @@ enum _AlbumState { loading, found, none }
 /// without one, the default cover chosen by the song title is applied.
 class CoverSelectView extends StatefulWidget {
   final AddSongDraft draft;
-  const CoverSelectView({super.key, required this.draft});
+
+  /// Set when changing the cover of a song already in the collection ("앨범 커버 수정"): the
+  /// button saves the cover and closes the screen instead of adding the song.
+  final String? songID;
+  const CoverSelectView({super.key, required this.draft, this.songID});
 
   /// Test hook: replaces the album-art lookup (returns a local file path or null).
   static Future<String?> Function(AddSongDraft)? debugAlbumArt;
@@ -165,6 +169,12 @@ class _CoverSelectViewState extends State<CoverSelectView> {
     setState(() => _saving = true);
     final path = await _coverFile();
     if (!mounted) return;
+    final songID = widget.songID;
+    if (songID != null) {
+      if (path != null) context.readModel.setCoverFromFile(songID, path);
+      Navigator.of(context).pop();
+      return;
+    }
     await addToCollection(context, draft, coverPath: path);
     if (mounted) setState(() => _saving = false);
   }
@@ -173,7 +183,7 @@ class _CoverSelectViewState extends State<CoverSelectView> {
   Widget build(BuildContext context) {
     final t = context.theme;
     return Scaffold(
-      appBar: AppBar(title: Text(tr('커버 이미지 추가')), centerTitle: true),
+      appBar: AppBar(title: Text(widget.songID == null ? tr('커버 이미지 추가') : tr('앨범 커버 수정')), centerTitle: true),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
         children: [
@@ -212,7 +222,7 @@ class _CoverSelectViewState extends State<CoverSelectView> {
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-          child: PrimaryButton(tr('컬렉션에 추가'), onPressed: _source == null || _saving ? null : _confirm),
+          child: PrimaryButton(widget.songID == null ? tr('컬렉션에 추가') : tr('저장'), onPressed: _source == null || _saving ? null : _confirm),
         ),
       ),
     );

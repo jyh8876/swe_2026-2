@@ -102,7 +102,8 @@ class _TranslatingViewState extends State<TranslatingView> {
               const SizedBox(height: 16),
               _stages(p?.stage ?? Stage.fetchLyrics),
               const SizedBox(height: 8),
-              Text(p?.eta == null ? tr('예상 시간 약 20초') : tr('예상 시간 약 {0}초', [p!.eta!.round().clamp(1, 1 << 30)]),
+              // Measured from the lines done so far, never a fixed guess (feedback 11/19 #1).
+              Text(_eta(p?.eta),
                   style: TextStyle(fontSize: 12, color: t.textSecondary)),
               const SizedBox(height: 20),
               // Live feed: the newest lines, each sliding in as it is translated.
@@ -203,4 +204,10 @@ class _FeedLine extends StatelessWidget {
       ),
     );
   }
+}
+
+String _eta(double? seconds) {
+  if (seconds == null) return tr('예상 시간 계산 중…');
+  if (seconds >= 90) return tr('예상 시간 약 {0}분', [(seconds / 60).round()]);
+  return tr('예상 시간 약 {0}초', [seconds.round().clamp(1, 1 << 30)]);
 }

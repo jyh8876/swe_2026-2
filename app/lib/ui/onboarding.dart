@@ -387,7 +387,7 @@ class _OnboardingKeyEntryState extends State<OnboardingKeyEntry> {
   /// Coming back from AI Studio with a key on the clipboard fills the field (Figma "붙여넣음").
   Future<void> _pasteIfKey() async {
     final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text?.trim() ?? '';
-    if (mounted && _key.text.isEmpty && RegExp(r'^AIza[0-9A-Za-z_\-]{30,}$').hasMatch(text)) {
+    if (mounted && _key.text.isEmpty && RegExp(r'^(AIza[0-9A-Za-z_\-]{30,}|AQ\.[0-9A-Za-z_\-]{30,})$').hasMatch(text)) {
       setState(() => _key.text = text);
     }
   }

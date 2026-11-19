@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -20,6 +21,7 @@ import '../core/playback.dart';
 import 'calendar.dart';
 import 'components.dart';
 import 'engine_settings.dart';
+import 'onboarding.dart';
 import 'share_card.dart';
 
 /// FG-09 Settings (RQ-14, RQ-15, RQ-18, PR-10).
@@ -147,14 +149,10 @@ class _SettingsViewState extends State<SettingsView> {
           ),
         ]),
         _section(tr('가사 기본 설정'), [
-          SwitchListTile(
-            title: Text(tr('해석 표시'), style: TextStyle(color: t.textPrimary)),
-            value: s.showTranslation,
-            onChanged: (v) => model.updateSettings((x) => x.showTranslation = v),
-          ),
+          // 해석 is always shown; 독음 is toggled per song in the player, this is its default.
           SwitchListTile(
             title: Text(tr('독음 표시'), style: TextStyle(color: t.textPrimary)),
-            subtitle: Text(tr('원문 위에 읽는 법을 보여줘요'), style: TextStyle(fontSize: 12, color: t.textTertiary)),
+            subtitle: Text(tr('새 곡의 기본값이에요. 곡마다 재생 화면 오른쪽 위에서 바꿀 수 있어요.'), style: TextStyle(fontSize: 12, color: t.textTertiary)),
             value: s.showReading,
             onChanged: (v) => model.updateSettings((x) => x.showReading = v),
           ),
@@ -545,7 +543,33 @@ class _APIKeyEntryViewState extends State<APIKeyEntryView> {
           ]),
           const SizedBox(height: 12),
         ],
-        OutlinedField(controller: _key, hint: tr('API 키 입력'), obscure: true, onChanged: (_) => setState(() {})),
+        OutlinedField(
+          controller: _key,
+          hint: tr('API 키 입력'),
+          obscure: true,
+          onChanged: (_) => setState(() {}),
+          // Same paste button as onboarding.
+          suffix: IconButton(
+            tooltip: tr('붙여넣기'),
+            icon: Icon(Icons.content_paste, size: 20, color: t.textTertiary),
+            onPressed: () async {
+              final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text?.trim() ?? '';
+              if (mounted && text.isNotEmpty) setState(() => _key.text = text);
+            },
+          ),
+        ),
+        const SizedBox(height: 4),
+        // Feedback 11/19 #11: the same help as onboarding, under the field.
+        _helpRow(Icons.north_east, tr('Google AI Studio 열기'), tr('API 키 페이지로 바로 가요'), () async {
+          try {
+            await Links.open(OnboardingKeyGuide.studio);
+          } catch (_) {
+            if (context.mounted) showMessage(context, tr('브라우저를 열지 못했어요.'));
+          }
+        }),
+        _helpRow(Icons.menu_book_outlined, tr('가져오기 가이드'), tr('API 키를 복사하는 3단계'), () {
+          Navigator.push(context, MaterialPageRoute(builder: (c) => OnboardingKeyGuide(onHaveKey: () => Navigator.pop(c))));
+        }),
         const SizedBox(height: 12),
         PrimaryButton(tr('키 확인'), onPressed: _key.text.isEmpty || status == 'verifying' ? null : _verify),
         const SizedBox(height: 12),
@@ -564,6 +588,18 @@ class _APIKeyEntryViewState extends State<APIKeyEntryView> {
           style: TextStyle(fontSize: 12, color: t.textTertiary),
         ),
       ]),
+    );
+  }
+
+  Widget _helpRow(IconData icon, String title, String subtitle, VoidCallback onTap) {
+    final t = context.theme;
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(icon, size: 20, color: t.textSecondary),
+      title: Text(title, style: TextStyle(fontSize: 15, color: t.textPrimary)),
+      subtitle: Text(subtitle, style: TextStyle(fontSize: 12, color: t.textTertiary)),
+      trailing: Icon(Icons.chevron_right, color: t.textTertiary),
+      onTap: onTap,
     );
   }
 

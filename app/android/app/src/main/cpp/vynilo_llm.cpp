@@ -21,6 +21,10 @@ static llama_context *g_ctx = nullptr;
 static std::atomic<bool> g_cancel{false};
 static bool g_backends = false;
 
+// Tokens now held in the KV cache (prompt + generated). The next prompt reuses the longest common
+// prefix — every chunk of a song starts with the same system prompt — so only the rest is decoded.
+static std::vector<llama_token> g_cached;
+
 static void log_cb(ggml_log_level level, const char *text, void *) {
     if (level >= GGML_LOG_LEVEL_WARN) __android_log_print(ANDROID_LOG_WARN, TAG, "%s", text);
 }
@@ -32,6 +36,7 @@ static int n_threads() {
 }
 
 static void unload_locked() {
+    g_cached.clear();
     if (g_ctx) { llama_free(g_ctx); g_ctx = nullptr; }
     if (g_model) { llama_model_free(g_model); g_model = nullptr; }
 }
@@ -103,12 +108,24 @@ Java_com_vynilo_llm_LlamaNative_generate(JNIEnv *env, jobject, jstring jprompt, 
     if ((int) toks.size() + 8 >= n_ctx) { LOGE("prompt too long: %d", (int) toks.size()); return -2; }
     maxTokens = std::min<int>(maxTokens, n_ctx - (int) toks.size() - 1);
 
-    llama_memory_clear(llama_get_memory(g_ctx), true);
+    // Keep the common prefix (at least one prompt token is decoded, for the first logits).
+    llama_memory_t mem = llama_get_memory(g_ctx);
+    size_t keep = 0;
+    while (keep < g_cached.size() && keep < toks.size() && g_cached[keep] == toks[keep]) keep++;
+    if (keep >= toks.size()) keep = toks.size() - 1;
+    // Models whose memory cannot be cut part-way (recurrent layers) start over.
+    if (keep == 0 || !llama_memory_seq_rm(mem, 0, (llama_pos) keep, -1)) {
+        llama_memory_clear(mem, true);
+        keep = 0;
+    }
+    g_cached.assign(toks.begin(), toks.begin() + keep);
+    LOGI("prompt %d tokens, %d reused", (int) toks.size(), (int) keep);
 
-    // Prompt in n_batch-sized chunks.
-    for (size_t i = 0; i < toks.size(); i += 512) {
+    // The rest of the prompt in n_batch-sized chunks.
+    for (size_t i = keep; i < toks.size(); i += 512) {
         int len = (int) std::min<size_t>(512, toks.size() - i);
-        if (llama_decode(g_ctx, llama_batch_get_one(toks.data() + i, len)) != 0) return -1;
+        if (llama_decode(g_ctx, llama_batch_get_one(toks.data() + i, len)) != 0) { g_cached.clear(); llama_memory_clear(mem, true); return -1; }
+        g_cached.insert(g_cached.end(), toks.begin() + i, toks.begin() + i + len);
         if (g_cancel) return 0;
     }
 
@@ -130,6 +147,7 @@ Java_com_vynilo_llm_LlamaNative_generate(JNIEnv *env, jobject, jstring jprompt, 
         }
         produced++;
         if (llama_decode(g_ctx, llama_batch_get_one(&t, 1)) != 0) break;
+        g_cached.push_back(t);
     }
     llama_sampler_free(smpl);
     return produced;

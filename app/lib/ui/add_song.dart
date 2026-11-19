@@ -4,6 +4,7 @@ import '../app/app_model.dart';
 import '../app/i18n.dart';
 import '../app/theme.dart';
 import '../core/llm.dart';
+import '../core/lyrics.dart';
 import '../core/models.dart';
 import 'components.dart';
 import 'lyrics_browser.dart';
@@ -22,8 +23,6 @@ class _AddSongViewState extends State<AddSongView> {
   late final _artist = TextEditingController(text: widget.draft.artist);
   late final _lyrics = TextEditingController(text: widget.draft.lyrics);
 
-  final _tip = GlobalKey<TooltipState>();
-
   /// Translation language for this song; null = the app setting ("기본").
   late String? _target = widget.draft.targetLanguage;
 
@@ -34,6 +33,8 @@ class _AddSongViewState extends State<AddSongView> {
     _lyrics.dispose();
     super.dispose();
   }
+
+  bool get _synced => LRCParser.parse(_lyrics.text).type == LyricsType.synced;
 
   bool get _canContinue => _title.text.trim().isNotEmpty && _artist.text.trim().isNotEmpty && _lyrics.text.trim().isNotEmpty;
 
@@ -55,17 +56,21 @@ class _AddSongViewState extends State<AddSongView> {
           const SizedBox(height: 8),
           OutlinedField(controller: _artist, hint: '아티스트명을 입력해주세요.', onChanged: (_) => setState(() {})),
           const SizedBox(height: 18),
-          // Figma 03 (377:28232): "가사 ⓘ", the lyrics search chip once a title is in, the text area.
+          // Figma 03 (377:28232) + feedback 11/19 #9: "가사" with the how-to link, the lyrics
+          // search chip once a title is in, the text area.
           Row(children: [
             SectionLabel(tr('가사')),
-            const SizedBox(width: 2),
-            Tooltip(
-              key: _tip,
-              triggerMode: TooltipTriggerMode.tap,
-              showDuration: const Duration(seconds: 4),
-              preferBelow: false,
-              message: tr('가사를 붙여넣어 주세요.\nLRC 가사를 넣으면 노래에 맞춰 자동으로 넘어가요.'),
-              child: Padding(padding: const EdgeInsets.all(4), child: Icon(Icons.info_outline, size: 16, color: t.textTertiary)),
+            const Spacer(),
+            InkWell(
+              onTap: () => showLyricsGuide(context),
+              borderRadius: BorderRadius.circular(6),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text(tr('가사는 어떻게 불러오나요?'), style: TextStyle(fontSize: 13, color: t.textSecondary)),
+                  Icon(Icons.chevron_right, size: 16, color: t.textSecondary),
+                ]),
+              ),
             ),
           ]),
           if (_title.text.trim().isNotEmpty) ...[
@@ -107,6 +112,15 @@ class _AddSongViewState extends State<AddSongView> {
             style: TextStyle(color: t.textPrimary, fontSize: 13, fontFamily: 'monospace', height: 1.4),
             onChanged: (_) => setState(() {}),
           ),
+          // Timestamps such as [00:13.04] are recognised by themselves; no switch to set.
+          if (_synced) ...[
+            const SizedBox(height: 8),
+            Row(children: [
+              Icon(Icons.check_circle_rounded, size: 16, color: t.brandInk),
+              const SizedBox(width: 6),
+              Text(tr('싱크 가사를 인식했어요'), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: t.brandInk)),
+            ]),
+          ],
           const SizedBox(height: 18),
           SectionLabel(tr('번역 언어')),
           const SizedBox(height: 8),

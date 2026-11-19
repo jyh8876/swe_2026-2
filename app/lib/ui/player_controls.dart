@@ -149,7 +149,7 @@ class _PlaybackControlsState extends State<PlaybackControls> with SingleTickerPr
         final i = SyncEngine.lineIndex(sec - song.offset, lines);
         if (i == null) return null;
         final l = lines[i];
-        final tr0 = model.settings.showTranslation && !model.translationSkipped(song.id) ? model.collection.translationText(song.id, l.index, model.targetFor(song.id).code) : null;
+        final tr0 = !model.translationSkipped(song.id) ? model.collection.translationText(song.id, l.index, model.targetFor(song.id).code) : null;
         return (l.text, tr0, model.collection.isSaved(song.id, l.index));
       },
       onScrubStart: () {

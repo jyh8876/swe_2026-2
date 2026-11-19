@@ -97,7 +97,11 @@ void main() {
     var liteBusy = true;
     var t = DateTime(2026, 11, 19, 12);
     GeminiEngine.now = () => t;
-    addTearDown(() => GeminiEngine.now = DateTime.now);
+    GeminiEngine.retryDelay = Duration.zero;
+    addTearDown(() {
+      GeminiEngine.now = DateTime.now;
+      GeminiEngine.retryDelay = const Duration(seconds: 3);
+    });
     final e = GeminiEngine('k404', client: MockClient((r) async {
       if (r.method == 'GET') return json(models(['gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash-lite']));
       final model = r.url.pathSegments.last.split(':').first;
@@ -109,7 +113,8 @@ void main() {
     }));
     // Every model fails: all are tried, and the busy answer (503) is reported, not the 404.
     await expectLater(e.complete(system: 's', user: 'u', maxTokens: 50), throwsA(isA<LLMError>().having((x) => x.status, 'status', 503)));
-    expect(asked, ['gemini-3.5-flash-lite', 'gemini-2.5-flash-lite', 'gemini-3.8-flash', 'gemini-2.5-flash']);
+    // Two rounds: every model once, then once more after a pause.
+    expect(asked, [for (var r = 0; r < 2; r++) ...['gemini-3.5-flash-lite', 'gemini-2.5-flash-lite', 'gemini-3.8-flash', 'gemini-2.5-flash']]);
     // A minute later Flash-Lite recovers; resting models are still tried, but last.
     liteBusy = false;
     asked.clear();

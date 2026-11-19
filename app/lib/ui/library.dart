@@ -81,7 +81,7 @@ class _LibraryViewState extends State<LibraryView> {
               child: Row(children: [
                 _ViewToggle(value: layout, onChanged: (v) => setState(() => layout = v)),
                 const Spacer(),
-                _AddPill(onTap: () => model.push(const SearchRoute())),
+                _AddPill(onTap: () => model.openAdd()),
               ]),
             ),
           Expanded(
@@ -412,7 +412,7 @@ class _CarouselState extends State<_Carousel> with SingleTickerProviderStateMixi
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 14, height: 1.35, fontStyle: FontStyle.italic, color: t.textSecondary)),
-                  if (line.$2 != null && model.settings.showTranslation)
+                  if (line.$2 != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
                       child: Text(line.$2!, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: t.brandInk)),
@@ -682,15 +682,15 @@ class _StackViewState extends State<_StackView> with SingleTickerProviderStateMi
 
 // ─────────────── LP slab ───────────────
 
-/// Thickness of a record in its sleeve, as a share of the cover size. A real LP jacket is about
-/// 1 % of its width; a little more reads as a record at phone size.
-const _slabDepth = 0.045;
+/// Thickness of a cover plate, as a share of the cover size: a thin sheet of clear plastic
+/// (feedback 11/19 #12: half the earlier 4.5 %, no dark rim, so it never reads as two records).
+const _slabDepth = 0.0225;
 
 /// The back face and the four edges of an LP of [card] size, standing behind a cover drawn at
 /// z = 0 (further away is +z, as in the stack's camera). Painted before the cover.
 List<Widget> _slab(double card) {
   final th = card * _slabDepth;
-  const edge = Color(0xFFE6E7EB), rim = Color(0xFFC9CBD1);
+  final edge = Colors.white.withValues(alpha: 0.30);
   Widget face(double w, double h, Matrix4 m, {Gradient? g}) => Positioned(
         left: (card - w) / 2,
         top: (card - h) / 2,
@@ -702,10 +702,11 @@ List<Widget> _slab(double card) {
           child: DecoratedBox(decoration: BoxDecoration(color: g == null ? edge : null, gradient: g)),
         ),
       );
-  // Paper edge of the sleeve with the black rim of the record showing through the middle.
-  const side = LinearGradient(colors: [edge, rim, Color(0xFF1A1A1E), rim, edge], stops: [0, 0.38, 0.5, 0.62, 1]);
+  // Clear plastic edge: brighter where the light catches the faces, see-through in the middle.
+  final side = LinearGradient(
+      colors: [Colors.white.withValues(alpha: 0.55), Colors.white.withValues(alpha: 0.14), Colors.white.withValues(alpha: 0.55)]);
   return [
-    face(card, card, Matrix4.identity()..translateByDouble(0.0, 0.0, th, 1.0), g: LinearGradient(colors: [Colors.white.withValues(alpha: 0.18), Colors.white.withValues(alpha: 0.08)])),
+    face(card, card, Matrix4.identity()..translateByDouble(0.0, 0.0, th, 1.0), g: LinearGradient(colors: [Colors.white.withValues(alpha: 0.10), Colors.white.withValues(alpha: 0.04)])),
     face(th, card, Matrix4.identity()..translateByDouble(card / 2, 0.0, th / 2, 1.0)..rotateY(pi / 2), g: side),
     face(th, card, Matrix4.identity()..translateByDouble(-card / 2, 0.0, th / 2, 1.0)..rotateY(pi / 2), g: side),
     face(card, th, Matrix4.identity()..translateByDouble(0.0, -card / 2, th / 2, 1.0)..rotateX(pi / 2), g: side.withRotation()),
@@ -747,7 +748,7 @@ class _Grid extends StatelessWidget {
               if (i == 0) {
                 return Align(
                   alignment: Alignment.topLeft,
-                  child: SizedBox(width: plate, height: plate, child: AddSongTile(onTap: () => model.push(const SearchRoute()))),
+                  child: SizedBox(width: plate, height: plate, child: AddSongTile(onTap: () => model.openAdd())),
                 );
               }
               final song = songs[i - 1];
@@ -851,27 +852,19 @@ Future<void> showSongMenu(BuildContext context, Song song) async {
   final model = context.readModel;
   final hasLines = model.collection.linesFor(song.id).isNotEmpty;
   final action = await showActionSheet<String>(context, title: song.title, actions: [
-    SheetAction(tr('노래 수정'), 'edit', icon: Icons.edit_outlined),
-    SheetAction(tr('앨범 커버 바꾸기'), 'cover', icon: Icons.album_outlined),
+    SheetAction(tr('노래·가사 수정'), 'edit', icon: Icons.edit_outlined),
+    SheetAction(tr('앨범 커버 수정'), 'cover', icon: Icons.album_outlined),
     if (song.status == SongStatus.failed) SheetAction(tr('번역 재시도'), 'retry', icon: Icons.refresh),
     SheetAction(tr('현재 엔진으로 다시 번역'), 'retranslate', icon: Icons.translate),
-    SheetAction(tr('AI 번역 신고하기'), 'report', icon: Icons.flag_outlined),
     SheetAction(tr('싱크 맞추기'), 'timing', icon: Icons.av_timer, enabled: hasLines),
     SheetAction(tr('이 노래 퀴즈 풀기'), 'quiz', icon: Icons.quiz_outlined, enabled: hasLines),
-    if (song.isConquered)
-      SheetAction(tr('정복 취소'), 'unconquer', icon: Icons.undo)
-    else if (model.canMarkConquered(song.id))
-      SheetAction(tr('이 노래 정복!'), 'conquer', icon: Icons.emoji_events_outlined),
-    SheetAction(tr('삭제'), 'delete', icon: Icons.delete_outline, destructive: true),
+    SheetAction(tr('AI 번역 신고하기'), 'report', icon: Icons.flag_outlined),
+    SheetAction(tr('노래 삭제'), 'delete', icon: Icons.delete_outline, destructive: true),
   ]);
   if (!context.mounted) return;
   switch (action) {
     case 'edit':
       await showEditSong(context, song);
-    case 'unconquer':
-      model.setConquered(song.id, false);
-    case 'conquer':
-      model.setConquered(song.id, true);
     case 'cover':
       await showCoverPicker(context, song);
     case 'report':
@@ -911,7 +904,7 @@ class _EmptyHome extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.theme;
     final model = context.model;
-    void search() => model.push(const SearchRoute());
+    void search() => model.openAdd();
     return ListView(padding: EdgeInsets.only(top: 12, bottom: _bottomPad(model)), children: [
       SizedBox(
         height: 250,
@@ -985,7 +978,7 @@ class _EmptyHome extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
         child: Text(tr('가사를 바로 불러올 수 있는 곡'), style: TextStyle(fontSize: 13, color: t.textTertiary)),
       ),
-      CuratedShelvesView(shelves: model.shelves, onSelect: (e, _) => model.push(SearchRoute('${e.title} ${e.artist}', e.trackKey))),
+      CuratedShelvesView(shelves: model.shelves, onSelect: (e, _) => model.openAdd(e.trackKey)),
     ]);
   }
 }
@@ -1080,7 +1073,7 @@ class RecommendRow extends StatelessWidget {
                 label: '${e.title}, ${e.artist}${owned ? ', ${tr('이미 추가됨')}' : ''}',
                 excludeSemantics: true,
                 child: GestureDetector(
-                  onTap: () => onSelect != null ? onSelect!(e) : model.push(SearchRoute('${e.title} ${e.artist}', e.trackKey)),
+                  onTap: () => onSelect != null ? onSelect!(e) : model.openAdd(e.trackKey),
                   child: SizedBox(
                     width: 112,
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

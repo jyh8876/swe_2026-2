@@ -44,6 +44,12 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
   int? _scrubLine;
   bool _goldBurst = false;
 
+  /// After the user scrolls the lyrics, following resumes once they leave them alone this long
+  /// (as in Spotify's and Apple Music's lyrics).
+  static const resumeAfter = Duration(seconds: 3);
+  Timer? _resume;
+  bool _userScroll = false;
+
   /// Tap to sync: writing line times by tapping as each line starts.
   TapRecorder? _rec;
   DateTime? _recFirstTap;
@@ -81,6 +87,7 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
   @override
   void dispose() {
     _ticker.cancel();
+    _resume?.cancel();
     _drift.dispose();
     _scroll.dispose();
     _recordLater(_session);
@@ -384,17 +391,39 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
     ).whenComplete(() => _programmaticScroll = false);
   }
 
-  void _setFollowing(bool on) {
-    if (on == _following) return;
+  void _setFollowing(bool on, {double at = 0.42}) {
+    _resume?.cancel();
+    if (on == _following) {
+      if (on && _lastIndex != null) _placeList(_lastIndex!, at: at);
+      return;
+    }
     setState(() => _following = on);
-    if (on && _lastIndex != null) _placeList(_lastIndex!);
+    if (on && _lastIndex != null) _placeList(_lastIndex!, at: at);
+  }
+
+  /// The toggle shows only for songs that have a reading (독음) to show.
+  bool _hasReadings(AppModel model) {
+    if (model.translationSkipped(id)) return false;
+    final target = model.targetFor(id).code;
+    return model.collection.linesFor(id).any((l) => (model.collection.readingText(id, l.index, target) ?? '').isNotEmpty);
   }
 
   Widget _lyrics(AppModel model, Song song, List<LyricLine> lines, int? current, _Mode mode) {
     return Stack(children: [
       NotificationListener<ScrollNotification>(
         onNotification: (n) {
-          if (n is ScrollStartNotification && n.dragDetails != null && !_programmaticScroll) _setFollowing(false);
+          if (n is ScrollStartNotification && n.dragDetails != null && !_programmaticScroll) {
+            _userScroll = true;
+            _setFollowing(false);
+          }
+          // The user let go (and any fling settled): back to the playing line after a quiet moment.
+          if (n is ScrollEndNotification && _userScroll) {
+            _userScroll = false;
+            if (_following || _rec != null) return false;
+            _resume = Timer(resumeAfter, () {
+              if (mounted && !_following) _setFollowing(true);
+            });
+          }
           return false;
         },
         child: ShaderMask(
@@ -406,15 +435,22 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
             stops: [0, 0.14, 0.78, 1],
           ).createShader(r),
           blendMode: BlendMode.dstIn,
+          // Every line is laid out (not a lazy list), so any line, however far away, can be
+          // scrolled to: the current line and "현재 줄로 이동" need the line's position.
           child: LayoutBuilder(
-            builder: (context, c) => ListView(
+            builder: (context, c) => SingleChildScrollView(
               controller: _scroll,
               padding: EdgeInsets.fromLTRB(21, c.maxHeight * 0.3, 13, c.maxHeight * 0.5),
-              children: [for (final line in lines) _lyricRow(model, song, lines, line, current, mode)],
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [for (final line in lines) _lyricRow(model, song, lines, line, current, mode)],
+              ),
             ),
           ),
         ),
       ),
+      if (_hasReadings(model))
+        Positioned(top: 0, right: 12, child: _ReadingToggle(on: model.readingOn(id), onChanged: (v) => model.setReading(id, v))),
       if (!_following && current != null)
         Positioned(
           left: 0,
@@ -426,7 +462,7 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
               shape: const StadiumBorder(),
               child: InkWell(
                 customBorder: const StadiumBorder(),
-                onTap: () => _setFollowing(true),
+                onTap: () => _setFollowing(true, at: 0.5),
                 child: Padding(
                   padding: EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                   child: Text(tr('현재 줄로 이동'), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF15171C))),
@@ -445,7 +481,7 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
     final active = rec != null ? line.index == rec.next : mode != _Mode.linkedSynced || line.index == current;
     final target = model.targetFor(id).code;
     final translation = model.translationSkipped(id) ? null : model.collection.translationText(id, line.index, target);
-    final reading = model.settings.showReading && !model.translationSkipped(id) ? model.collection.readingText(id, line.index, target) : null;
+    final reading = model.readingOn(id) && !model.translationSkipped(id) ? model.collection.readingText(id, line.index, target) : null;
     // While the song plays, a tap moves the music to that line; tapping the current line (or a
     // long press) opens the explanation.
     final seekable = mode == _Mode.linkedSynced && line.start != null && (model.isPlayingSong(song) || model.tapSynced(song));
@@ -506,8 +542,8 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
                   ),
                   child: Text(line.text),
                 ),
-                if (model.settings.showTranslation)
-                  // A translation fades and grows in the moment it arrives.
+                // The translation is always shown (feedback 11/19 #8).
+                // A translation fades and grows in the moment it arrives.
                   AnimatedSize(
                     duration: const Duration(milliseconds: 260),
                     curve: Curves.easeOutCubic,
@@ -606,22 +642,17 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
   // ── Song settings (Notion 11/19): edit, cover, retranslate, report, sync, quiz; conquer (RQ-13) ──
 
   Future<void> _menu(AppModel model, Song song, List<LyricLine> lines) async {
-    final canConquer = model.canMarkConquered(id) || _session.linesReached.length >= max(1, (lines.length * 0.9).floor());
     final action = await showActionSheet<String>(
       context,
       title: tr('엔진: {0}', [EngineFactory.label(model.settings.engine)]),
       actions: [
-        SheetAction(tr('노래 수정'), 'edit', icon: Icons.edit_outlined),
-        SheetAction(tr('앨범 커버 바꾸기'), 'cover', icon: Icons.album_outlined),
+        // Feedback 11/19 #5–7: seven items; conquering follows the quiz, wrong lyrics are edited.
+        SheetAction(tr('노래·가사 수정'), 'edit', icon: Icons.edit_outlined),
+        SheetAction(tr('앨범 커버 수정'), 'cover', icon: Icons.album_outlined),
         SheetAction(tr('현재 엔진으로 다시 번역'), 'retranslate', icon: Icons.translate),
-        SheetAction(tr('AI 번역 신고하기'), 'report', icon: Icons.flag_outlined),
         SheetAction(tr('싱크 맞추기'), 'timing', icon: Icons.av_timer),
         SheetAction(tr('이 노래 퀴즈 풀기'), 'quiz', icon: Icons.quiz_outlined, enabled: lines.isNotEmpty),
-        SheetAction(tr('가사가 이상해요?'), 'wrong', icon: Icons.help_outline),
-        if (song.isConquered)
-          SheetAction(tr('정복 취소'), 'unconquer', icon: Icons.undo)
-        else
-          SheetAction(tr('이 노래 정복!'), 'conquer', icon: Icons.emoji_events_outlined, enabled: canConquer),
+        SheetAction(tr('AI 번역 신고하기'), 'report', icon: Icons.flag_outlined),
         // Figma 248:1806: "노래 삭제" in red at the end of the player menu.
         SheetAction(tr('노래 삭제'), 'delete', icon: Icons.delete_outline, destructive: true),
       ],
@@ -640,14 +671,8 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
         openSongQuiz(context, song);
       case 'delete':
         if (await askDelete(context, song) != null) model.pop();
-      case 'wrong':
-        model.push(SearchRoute('${song.title} ${song.artist}'));
       case 'retranslate':
         model.retranslate(id);
-      case 'unconquer':
-        model.setConquered(id, false);
-      case 'conquer':
-        _conquer();
     }
   }
 
@@ -796,3 +821,40 @@ class _Backdrop extends AnimatedWidget {
 
 /// Seek bar from the prototype: saved lines are mint segments with star pins; while scrubbing
 /// the track thickens and the playhead snaps onto saved lines.
+
+/// 독음 on/off, floating at the top right of the lyrics (feedback 11/19 #8): ON shows the reading,
+/// the original and the translation; OFF the original and the translation. Kept per song.
+class _ReadingToggle extends StatelessWidget {
+  final bool on;
+  final ValueChanged<bool> onChanged;
+  const _ReadingToggle({required this.on, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = on ? const Color(0xFF15171C) : PlayerPalette.fg;
+    return Semantics(
+      toggled: on,
+      label: tr('독음 표시'),
+      excludeSemantics: true,
+      child: Material(
+        color: on ? PlayerPalette.brand : const Color(0x6615171C),
+        shape: StadiumBorder(side: BorderSide(color: on ? PlayerPalette.brand : PlayerPalette.placeholder, width: 1)),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: () {
+            HapticFeedback.selectionClick();
+            onChanged(!on);
+          },
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Text('가', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: fg)),
+              const SizedBox(width: 5),
+              Text(on ? tr('독음 ON') : tr('독음 OFF'), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: fg)),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+}

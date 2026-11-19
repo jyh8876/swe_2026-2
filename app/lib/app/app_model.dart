@@ -95,6 +95,14 @@ class AddSongDraft {
 
   AddSongDraft();
 
+  /// A known track (recommendation, now playing): title and artist go in their own fields.
+  AddSongDraft.forTrack(TrackKey k) {
+    title = k.title.trim();
+    artist = TrackNormalizer.primaryArtist(k.artist);
+    album = k.album;
+    duration = k.duration;
+  }
+
   AddSongDraft.fromCandidate(LyricsCandidate c, {String? shelfID}) {
     title = c.trackName;
     artist = TrackNormalizer.primaryArtist(c.artistName);
@@ -374,6 +382,14 @@ class AppModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// "+ 노래 추가": straight to the add screen (no search step), pre-filled when the track is
+  /// known. A song already in the collection opens its LP instead. [replace] starts a new path.
+  void openAdd([TrackKey? track, bool replace = false]) {
+    final existing = track == null ? null : collection.existingSong(track);
+    final r = existing != null ? PlayerRoute(existing.id) : AddRoute(track == null ? AddSongDraft() : AddSongDraft.forTrack(track));
+    replace ? setPath([r]) : push(r);
+  }
+
   void setPath(List<Route> path) {
     libraryPath = path;
     notifyListeners();
@@ -405,7 +421,7 @@ class AppModel extends ChangeNotifier {
     switch (screen) {
       case 'search':
         selectedTab = AppTab.library;
-        libraryPath = [SearchRoute(uri.queryParameters['q'] ?? '')];
+        libraryPath = [AddRoute(AddSongDraft()..title = uri.queryParameters['q'] ?? '')];
       case 'add':
         selectedTab = AppTab.library;
         libraryPath = [AddRoute(AddSongDraft())];
@@ -463,6 +479,8 @@ class AppModel extends ChangeNotifier {
       sourceProvider: draft.sourceProvider,
       curatedShelfID: draft.curatedShelfID,
       targetLanguage: draft.targetLanguage,
+      // A new song starts from the 마이페이지 default; its toggle changes only this song.
+      showReading: settings.showReading,
     );
     if (coverSourcePath != null) song.coverPath = CoverStore.save(coverSourcePath, song.id);
     _mutate((s) {
@@ -483,6 +501,11 @@ class AppModel extends ChangeNotifier {
   static const sameLanguageEngine = 'same-language';
 
   /// True when the song was not translated because its lyrics are already in the target language.
+  /// 독음 for this song: its own toggle, else the default for new songs (마이페이지).
+  bool readingOn(String songID) => collection.song(songID)?.showReading ?? settings.showReading;
+
+  void setReading(String songID, bool on) => _mutate((s) => s.updateSong(songID, (song) => song.showReading = on));
+
   bool translationSkipped(String songID) {
     final first = collection.linesFor(songID).firstOrNull;
     return first != null && collection.translation(songID, first.index, targetFor(songID).code)?.engineID == sameLanguageEngine;

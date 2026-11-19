@@ -437,6 +437,7 @@ class OutlinedField extends StatelessWidget {
   final TextStyle? style;
   final ValueChanged<String>? onChanged;
   final bool obscure;
+  final Widget? suffix;
   const OutlinedField(
       {super.key,
       required this.controller,
@@ -445,7 +446,8 @@ class OutlinedField extends StatelessWidget {
       this.maxLines = 1,
       this.style,
       this.onChanged,
-      this.obscure = false});
+      this.obscure = false,
+      this.suffix});
 
   @override
   Widget build(BuildContext context) {
@@ -466,6 +468,7 @@ class OutlinedField extends StatelessWidget {
         enabledBorder: border,
         focusedBorder: border.copyWith(borderSide: BorderSide(color: t.textSecondary)),
         contentPadding: EdgeInsets.all(14),
+        suffixIcon: suffix,
       ),
     );
   }

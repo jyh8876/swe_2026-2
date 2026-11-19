@@ -3,12 +3,13 @@ import 'package:flutter/material.dart';
 import '../app/account.dart';
 import '../app/app_model.dart';
 import '../app/i18n.dart';
+import '../app/platform_services.dart';
 import '../app/theme.dart';
 import '../core/lyrics.dart';
 import '../core/models.dart';
 import '../core/quiz.dart';
 import 'components.dart';
-import 'covers.dart';
+import 'cover_select.dart';
 import 'quiz.dart';
 
 // Song settings shared by the library's long-press menu and the player's menu (Notion 11/19):
@@ -20,17 +21,15 @@ void openSongQuiz(BuildContext context, Song song) {
   openQuiz(context, song.id, level >= QuizBuilder.levels ? QuizBuilder.levels : level + 1);
 }
 
-/// Picks a new album cover for [song].
-Future<void> showCoverPicker(BuildContext context, Song song) {
-  final t = context.theme;
-  return showModalBottomSheet<void>(
-    context: context,
-    useRootNavigator: true,
-    backgroundColor: t.background,
-    showDragHandle: true,
-    builder: (_) => SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 20), child: CoverPicker(songID: song.id))),
-  );
-}
+/// "앨범 커버 수정": the same "커버 이미지 추가" screen as when adding a song (album cover,
+/// gallery, Pinterest, default covers), saved with "저장".
+Future<void> showCoverPicker(BuildContext context, Song song) => Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(
+    builder: (_) => CoverSelectView(
+        draft: AddSongDraft()
+          ..title = song.title
+          ..artist = song.artist
+          ..album = song.album,
+        songID: song.id)));
 
 /// Song edit (Figma "가사 수정", 249:2145): title, artist, lyrics and translation language on one
 /// screen, saved with "수정 완료". Unchanged lines keep their translations and saved state.
@@ -65,7 +64,7 @@ class _EditSongViewState extends State<EditSongView> {
     final t = context.theme;
     final model = context.model;
     return Scaffold(
-      appBar: AppBar(title: Text(tr('노래 수정')), centerTitle: true),
+      appBar: AppBar(title: Text(tr('노래·가사 수정')), centerTitle: true),
       body: ListView(padding: const EdgeInsets.all(20), children: [
         SectionLabel(tr('제목')),
         const SizedBox(height: 8),
@@ -101,11 +100,30 @@ class _EditSongViewState extends State<EditSongView> {
     );
   }
 
-  void _save() {
+  Future<void> _save() async {
     FocusScope.of(context).unfocus();
-    context.readModel.editSong(widget.song.id,
-        title: _title.text, artist: _artist.text, lyrics: _lyrics.text, targetLanguage: _target, setTarget: true);
-    Navigator.pop(context);
+    final model = context.readModel;
+    final id = widget.song.id;
+    final lyricsChanged = _lyrics.text.trim() != LRCParser.format(model.collection.linesFor(id)).trim();
+    var all = false;
+    if (lyricsChanged) {
+      // Changed lines are translated again anyway; the whole song only when the user wants it.
+      final choice = await showActionSheet<String>(
+        context,
+        title: tr('가사를 바꿨어요. 현재 엔진으로 다시 번역할까요?'),
+        message: tr('엔진: {0}', [EngineFactory.label(model.settings.engine)]),
+        actions: [
+          SheetAction(tr('노래 전체 다시 번역'), 'all', icon: Icons.translate),
+          SheetAction(tr('바꾼 줄만 번역'), 'changed', icon: Icons.edit_note),
+          SheetAction(tr('취소'), 'cancel'),
+        ],
+      );
+      if (!mounted || choice == null || choice == 'cancel') return;
+      all = choice == 'all';
+    }
+    model.editSong(id, title: _title.text, artist: _artist.text, lyrics: _lyrics.text, targetLanguage: _target, setTarget: true);
+    if (all) model.retranslate(id);
+    if (mounted) Navigator.pop(context);
   }
 }
 

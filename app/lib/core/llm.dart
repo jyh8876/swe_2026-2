@@ -99,12 +99,12 @@ class LLMError implements Exception {
   /// Plain-language message for the UI (Korean, matching the Figma copy).
   String get userMessage => switch (kind) {
         LLMErrorKind.missingAPIKey => 'API 키를 먼저 입력해 주세요.',
-        LLMErrorKind.invalidKey => 'API 키가 올바르지 않아요. 설정에서 확인해 주세요.',
+        LLMErrorKind.invalidKey => 'API 키가 올바르지 않아요. 키를 다시 확인해 주세요.',
         LLMErrorKind.outOfCredit => 'API 계정의 크레딧이 부족해요.',
         LLMErrorKind.rateLimited => '요청이 많아 잠시 후 다시 시도해요.',
         LLMErrorKind.server => status == 503 || status == 504
             ? 'AI 서버가 지금 붐벼요. 잠시 후 다시 시도해 주세요 ($status).'
-            : '서버 오류가 발생했어요 ($status).',
+            : '일시적인 오류예요. 잠시 후 다시 시도해 주세요 ($status).',
         LLMErrorKind.network => '인터넷에 연결되어 있지 않아요.',
         LLMErrorKind.malformedOutput => '번역 결과를 확인하지 못했어요. 다시 시도해 주세요.',
         LLMErrorKind.refused => '현재 엔진에서는 이 해설을 제공할 수 없어요.',
@@ -699,6 +699,9 @@ class GeminiEngine extends CloudChatEngine {
   static final _resting = <String, Map<String, DateTime>>{};
   static DateTime Function() now = DateTime.now;
 
+  /// Pause before the second round when every model was busy.
+  static Duration retryDelay = const Duration(seconds: 3);
+
   final String? _fixedModel;
 
   GeminiEngine(String apiKey, {String? model, http.Client? client})
@@ -828,20 +831,27 @@ class GeminiEngine extends CloudChatEngine {
     final models = await _models();
     final working = _working[apiKey];
     final all = [?working, ...models.where((m) => m != working)];
-    // Resting models go last instead of being dropped, so a key with only busy models still tries.
-    final order = [...all.where((m) => !_isResting(m)), ...all.where(_isResting)];
     LLMError? last;
-    for (final model in order) {
-      try {
-        final text = await _ask(model, system, user, maxTokens);
-        if (_fixedModel == null) _working[apiKey] = model;
-        return text;
-      } on LLMError catch (e) {
-        if (!_tryNext(e)) rethrow;
-        // Report the most telling failure: a busy model (503) over one that is closed (404).
-        if (last == null || last.status == 404) last = e;
-        if (_fixedModel == null) _rest(model, e);
-        if (_working[apiKey] == model) _working.remove(apiKey);
+    // When every model is busy, wait a moment and go round once more before giving up.
+    for (var round = 0; round < 2; round++) {
+      if (round > 0) {
+        if (last == null || last.status == 404) break;
+        await Future<void>.delayed(retryDelay);
+      }
+      // Resting models go last instead of being dropped, so a key with only busy models still tries.
+      final order = [...all.where((m) => !_isResting(m)), ...all.where(_isResting)];
+      for (final model in order) {
+        try {
+          final text = await _ask(model, system, user, maxTokens);
+          if (_fixedModel == null) _working[apiKey] = model;
+          return text;
+        } on LLMError catch (e) {
+          if (!_tryNext(e)) rethrow;
+          // Report the most telling failure: a busy model (503) over one that is closed (404).
+          if (last == null || last.status == 404) last = e;
+          if (_fixedModel == null) _rest(model, e);
+          if (_working[apiKey] == model) _working.remove(apiKey);
+        }
       }
     }
     throw last ?? const LLMError(LLMErrorKind.server);

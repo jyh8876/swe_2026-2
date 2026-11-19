@@ -92,6 +92,9 @@ class Song {
   /// Translation language chosen for this song (0.14.0); null follows the app setting.
   String? targetLanguage;
 
+  /// 독음 shown for this song (the player's floating toggle); null follows the app setting.
+  bool? showReading;
+
   Song({
     String? id,
     required this.title,
@@ -107,6 +110,7 @@ class Song {
     DateTime? addedAt,
     this.curatedShelfID,
     this.targetLanguage,
+    this.showReading,
   })  : id = id ?? newUUID(),
         addedAt = addedAt ?? DateTime.now();
 
@@ -130,6 +134,7 @@ class Song {
     _put(m, 'conqueredAt', conqueredAt == null ? null : c.encode(conqueredAt!));
     _put(m, 'curatedShelfID', curatedShelfID);
     _put(m, 'targetLanguage', targetLanguage);
+    _put(m, 'showReading', showReading);
     return m;
   }
 
@@ -148,6 +153,7 @@ class Song {
         addedAt: c.decode(j['addedAt']),
         curatedShelfID: j['curatedShelfID'] as String?,
         targetLanguage: j['targetLanguage'] as String?,
+        showReading: j['showReading'] as bool?,
       );
 }
 
