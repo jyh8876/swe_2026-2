@@ -135,8 +135,8 @@ class AppSettings {
   AccountInfo? account;
 
   // Engine settings that are not secrets (keys live in the SecureStore).
-  String vyniloURL = VyniloServerEngine.defaultURL;
-  String vyniloModel = '';
+  String vinyloURL = VinyloServerEngine.defaultURL;
+  String vinyloModel = '';
   String gatewayURL = '';
   String gatewayModel = '';
   String claudeModel = ClaudeEngine.defaultModel;
@@ -146,7 +146,7 @@ class AppSettings {
   AccentColor accent = AccentColor.mint;
 
   EngineConfig get engineConfig => EngineConfig(
-      vyniloURL: vyniloURL, vyniloModel: vyniloModel, gatewayURL: gatewayURL, gatewayModel: gatewayModel, claudeModel: claudeModel);
+      vinyloURL: vinyloURL, vinyloModel: vinyloModel, gatewayURL: gatewayURL, gatewayModel: gatewayModel, claudeModel: claudeModel);
 
   static const key = 'app.settings.v1';
 
@@ -162,8 +162,8 @@ class AppSettings {
         'cloudNoticeAccepted': cloudNoticeAccepted,
         'connectedSources': connectedSources.map((s) => s.name).toList(),
         'account': account?.toJson(),
-        'vyniloURL': vyniloURL,
-        'vyniloModel': vyniloModel,
+        'vinyloURL': vinyloURL,
+        'vinyloModel': vinyloModel,
         'gatewayURL': gatewayURL,
         'gatewayModel': gatewayModel,
         'claudeModel': claudeModel,
@@ -174,7 +174,9 @@ class AppSettings {
   static AppSettings fromJson(Map j) {
     final s = AppSettings();
     s.hasOnboarded = j['hasOnboarded'] == true;
-    s.engine = EngineKind.values.firstWhere((e) => e.name == j['engine'], orElse: () => EngineKind.onDevice);
+    // Before 0.18.2 the server engine and its settings were spelled 'vynilo'.
+    final engine = j['engine'] == 'vynilo' ? EngineKind.vinylo.name : j['engine'];
+    s.engine = EngineKind.values.firstWhere((e) => e.name == engine, orElse: () => EngineKind.onDevice);
     if (!s.engine.isOffered) s.engine = EngineKind.gemini;
     s.targetLanguage = j['targetLanguage'] as String? ?? Language.korean.code;
     s.uiLanguage = j['uiLanguage'] as String? ?? Language.korean.code;
@@ -187,8 +189,8 @@ class AppSettings {
         .toSet();
     // 0.14 kept a Google account under 'googleAccount'.
     s.account = AccountInfo.fromJson(j['account'] ?? j['googleAccount']);
-    s.vyniloURL = j['vyniloURL'] as String? ?? VyniloServerEngine.defaultURL;
-    s.vyniloModel = j['vyniloModel'] as String? ?? '';
+    s.vinyloURL = (j['vinyloURL'] ?? j['vyniloURL']) as String? ?? VinyloServerEngine.defaultURL;
+    s.vinyloModel = (j['vinyloModel'] ?? j['vyniloModel']) as String? ?? '';
     s.gatewayURL = j['gatewayURL'] as String? ?? '';
     s.gatewayModel = j['gatewayModel'] as String? ?? '';
     s.claudeModel = j['claudeModel'] as String? ?? ClaudeEngine.defaultModel;
@@ -411,11 +413,11 @@ class AppModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Screen links `vynilo://open/<screen>`: `library`, `search` (optional `?q=`), `add`, `quiz`,
+  /// Screen links `vinylo://open/<screen>`: `library`, `search` (optional `?q=`), `add`, `quiz`,
   /// `saved` and `my`. Used by Play's pre-launch report and for sharing. Returns false for other
   /// links (such as the Spotify login redirect).
   bool openLink(Uri uri) {
-    if (uri.scheme != 'vynilo' || uri.host != 'open') return false;
+    if (uri.scheme != 'vinylo' || uri.host != 'open') return false;
     banner = null;
     final screen = uri.pathSegments.isEmpty ? 'library' : uri.pathSegments.first;
     switch (screen) {

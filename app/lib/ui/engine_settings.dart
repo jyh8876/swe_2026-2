@@ -7,12 +7,12 @@ import '../app/theme.dart';
 import '../core/llm.dart';
 import 'components.dart';
 
-/// Settings for the engines reached by URL: the self-hosted Vynilo server and any
+/// Settings for the engines reached by URL: the self-hosted Vinylo server and any
 /// OpenAI-compatible LLM gateway. Same flow as the API key screen (RQ-14): enter, check, save.
 /// Keys go to secure storage only; URLs and model names are ordinary settings.
 class EndpointSettingsView extends StatefulWidget {
   final EngineKind kind;
-  const EndpointSettingsView({super.key, required this.kind}) : assert(kind == EngineKind.vynilo || kind == EngineKind.gateway);
+  const EndpointSettingsView({super.key, required this.kind}) : assert(kind == EngineKind.vinylo || kind == EngineKind.gateway);
 
   @override
   State<EndpointSettingsView> createState() => _EndpointSettingsViewState();
@@ -27,15 +27,15 @@ class _EndpointSettingsViewState extends State<EndpointSettingsView> {
   String status = 'idle';
   String? failure;
 
-  bool get isServer => widget.kind == EngineKind.vynilo;
+  bool get isServer => widget.kind == EngineKind.vinylo;
 
   @override
   void initState() {
     super.initState();
     final s = context.readModel.settings;
     // The gateway starts blank: the user brings their own gateway URL and key.
-    _url.text = isServer ? s.vyniloURL : s.gatewayURL;
-    model = isServer ? s.vyniloModel : s.gatewayModel;
+    _url.text = isServer ? s.vinyloURL : s.gatewayURL;
+    model = isServer ? s.vinyloModel : s.gatewayModel;
     // With a saved URL and key, load the model list right away so the model can be changed.
     if (_url.text.trim().isNotEmpty && (_savedKey ?? '').isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _check(select: false));
@@ -60,10 +60,10 @@ class _EndpointSettingsViewState extends State<EndpointSettingsView> {
     final saved = model.apiKey(widget.kind);
     final canCheck = _url.text.trim().isNotEmpty && _keyForRequest.isNotEmpty && status != 'checking';
     return Scaffold(
-      appBar: AppBar(title: Text(isServer ? tr('Vynilo 서버') : tr('LLM 게이트웨이'))),
+      appBar: AppBar(title: Text(isServer ? tr('Vinylo 서버') : tr('LLM 게이트웨이'))),
       body: ListView(padding: const EdgeInsets.all(20), children: [
         _label(isServer ? tr('서버 주소') : tr('게이트웨이 주소')),
-        OutlinedField(controller: _url, hint: isServer ? VyniloServerEngine.defaultURL : 'https://…/v1', onChanged: (_) => setState(() {})),
+        OutlinedField(controller: _url, hint: isServer ? VinyloServerEngine.defaultURL : 'https://…/v1', onChanged: (_) => setState(() {})),
         const SizedBox(height: 16),
         _label(tr('API 키')),
         if (saved != null && _key.text.isEmpty) ...[
@@ -126,7 +126,7 @@ class _EndpointSettingsViewState extends State<EndpointSettingsView> {
         const SizedBox(height: 16),
         Text(
           isServer
-              ? tr('Vynilo 웹앱의 API keys 페이지에서 키를 만들 수 있어요. 서버는 Tailscale 안에서만 열려 있어서, 이 휴대폰도 Tailscale에 연결되어 있어야 해요. 가사는 내 서버로만 전송돼요.')
+              ? tr('Vinylo 웹앱의 API keys 페이지에서 키를 만들 수 있어요. 서버는 Tailscale 안에서만 열려 있어서, 이 휴대폰도 Tailscale에 연결되어 있어야 해요. 가사는 내 서버로만 전송돼요.')
               : tr('OpenAI 호환 /chat/completions 게이트웨이(예: Baze, OpenRouter)를 쓸 수 있어요. 가사는 게이트웨이와 선택한 모델 제공자로 전송되고, 사용량은 게이트웨이 계정에 청구돼요.'),
           style: TextStyle(fontSize: 12, color: t.textTertiary),
         ),
@@ -148,7 +148,7 @@ class _EndpointSettingsViewState extends State<EndpointSettingsView> {
 
   void _choose(String value) {
     setState(() => model = value);
-    context.readModel.updateSettings((s) => isServer ? s.vyniloModel = value : s.gatewayModel = value);
+    context.readModel.updateSettings((s) => isServer ? s.vinyloModel = value : s.gatewayModel = value);
     showMessage(context, tr('모델을 {0}(으)로 바꿨어요. 다음 번역부터 적용돼요.', [value.isEmpty ? tr('서버 기본 모델') : value]));
   }
 
@@ -179,11 +179,11 @@ class _EndpointSettingsViewState extends State<EndpointSettingsView> {
     final key = _keyForRequest;
     setState(() => status = 'checking');
     try {
-      final list = isServer ? await VyniloServerEngine.listModels(url, key) : await GatewayEngine.listModels(url, key);
+      final list = isServer ? await VinyloServerEngine.listModels(url, key) : await GatewayEngine.listModels(url, key);
       if (_key.text.trim().isNotEmpty) await app.secureStore.set(key, SecretKey.apiKeyFor(widget.kind)!);
       app.updateSettings((s) {
         if (isServer) {
-          s.vyniloURL = url;
+          s.vinyloURL = url;
         } else {
           s.gatewayURL = url;
           if (s.gatewayModel.isEmpty && list.isNotEmpty) s.gatewayModel = list.first;
@@ -194,7 +194,7 @@ class _EndpointSettingsViewState extends State<EndpointSettingsView> {
       if (mounted) {
         setState(() {
           models = list;
-          model = isServer ? app.settings.vyniloModel : app.settings.gatewayModel;
+          model = isServer ? app.settings.vinyloModel : app.settings.gatewayModel;
           status = 'ok';
         });
       }

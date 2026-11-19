@@ -15,8 +15,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-  const methods = MethodChannel('vynilo/media_session');
-  const events = EventChannel('vynilo/media_session/state');
+  const methods = MethodChannel('vinylo/media_session');
+  const events = EventChannel('vinylo/media_session/state');
 
   late AppModel model;
   late Song song;

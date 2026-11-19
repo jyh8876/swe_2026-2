@@ -1,7 +1,7 @@
 import Flutter
 import UIKit
 
-/// The app uses the UIScene lifecycle, so URLs (vynilo://spotify-callback) arrive here, not in AppDelegate.
+/// The app uses the UIScene lifecycle, so URLs (vinylo://spotify-callback) arrive here, not in AppDelegate.
 class SceneDelegate: FlutterSceneDelegate {
   override func scene(
     _ scene: UIScene,

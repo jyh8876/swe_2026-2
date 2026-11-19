@@ -15,14 +15,14 @@ void main() {
 
   test('stanzas split at index gaps and at 8 lines', () {
     final lines = sampleLines(List.generate(11, (i) => 'line $i'))..removeAt(3);
-    final groups = VyniloServerEngine.stanzas(lines);
+    final groups = VinyloServerEngine.stanzas(lines);
     expect(groups.map((g) => g.map((l) => l.index).toList()).toList(), [
       [0, 1, 2],
       [4, 5, 6, 7, 8, 9, 10],
     ]);
   });
 
-  test('Vynilo server: stanza translated in one call, lines matched back', () async {
+  test('Vinylo server: stanza translated in one call, lines matched back', () async {
     var calls = 0;
     final client = MockClient((req) async {
       calls++;
@@ -32,13 +32,13 @@ void main() {
       final out = text.split('\n').map((l) => '번역:$l').join('\n');
       return http.Response(jsonEncode({'translation': out}), 200, headers: {'content-type': 'application/json; charset=utf-8'});
     });
-    final engine = VyniloServerEngine('https://srv', 'vyk_test', client: client);
+    final engine = VinyloServerEngine('https://srv', 'vyk_test', client: client);
     final results = await engine.translateSong(sampleLines(['The kettle sings at dawn', 'We count the passing trains']), ko).toList();
     expect(calls, 1);
     expect(results.whereType<Translated>().map((r) => r.text), ['번역:The kettle sings at dawn', '번역:We count the passing trains']);
   });
 
-  test('Vynilo server: line-count mismatch falls back to one line at a time', () async {
+  test('Vinylo server: line-count mismatch falls back to one line at a time', () async {
     var calls = 0;
     final client = MockClient((req) async {
       calls++;
@@ -46,14 +46,14 @@ void main() {
       final out = text.contains('\n') ? 'merged into one line' : '한 줄:$text';
       return http.Response(jsonEncode({'translation': out}), 200, headers: {'content-type': 'application/json; charset=utf-8'});
     });
-    final engine = VyniloServerEngine('https://srv', 'k', client: client);
+    final engine = VinyloServerEngine('https://srv', 'k', client: client);
     final results = await engine.translateSong(sampleLines(['Paper boats on the river', 'Lanterns over the bridge']), ko).toList();
     expect(calls, 3);
     expect(results.whereType<Translated>().length, 2);
   });
 
-  test('Vynilo server: 401 maps to invalid key, explain is unavailable', () async {
-    final engine = VyniloServerEngine('https://srv', 'bad', client: MockClient((_) async => http.Response('{}', 401)));
+  test('Vinylo server: 401 maps to invalid key, explain is unavailable', () async {
+    final engine = VinyloServerEngine('https://srv', 'bad', client: MockClient((_) async => http.Response('{}', 401)));
     expect(engine.translate('hello', ko), throwsA(isA<LLMError>().having((e) => e.kind, 'kind', LLMErrorKind.invalidKey)));
     final line = sampleLines(['hello']).first;
     expect(engine.explain(line, [line], ko), throwsA(isA<LLMError>().having((e) => e.kind, 'kind', LLMErrorKind.unavailable)));

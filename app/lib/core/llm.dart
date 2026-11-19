@@ -9,18 +9,18 @@ import 'models.dart';
 /// User-facing engine choice (FG-00, FG-09).
 enum EngineKind {
   onDevice,
-  vynilo,
+  vinylo,
   gateway,
   claude,
   gemini;
 
-  /// The engines the app offers (Notion 11/19: on-device, Gemini, gateway). Vynilo server and
+  /// The engines the app offers (Notion 11/19: on-device, Gemini, gateway). Vinylo server and
   /// Claude are no longer offered; saved settings that used them move to Gemini.
   static const offered = [EngineKind.onDevice, EngineKind.gemini, EngineKind.gateway];
   bool get isOffered => offered.contains(this);
 
   /// Engines whose key is entered on the API key screen (Claude, Gemini).
-  /// The Vynilo server and gateways have their own settings screens.
+  /// The Vinylo server and gateways have their own settings screens.
   bool get requiresAPIKey => this == EngineKind.claude || this == EngineKind.gemini;
 
   /// Sends lyrics off the device, so the one-time cloud notice applies (SIR-3).
@@ -29,7 +29,7 @@ enum EngineKind {
   /// Badge label shown on FG-04/FG-06 (SIR-3).
   String get badgeLabel => switch (this) {
         EngineKind.onDevice => 'On-device',
-        EngineKind.vynilo => 'Vynilo',
+        EngineKind.vinylo => 'Vinylo',
         EngineKind.gateway => 'Gateway',
         EngineKind.claude => 'Claude',
         EngineKind.gemini => 'Gemini',
@@ -1008,27 +1008,27 @@ class GatewayEngine extends CloudChatEngine {
   }
 }
 
-/// The self-hosted Vynilo translation server (`POST /v1/translate`, API key `vyk_…`).
+/// The self-hosted Vinylo translation server (`POST /v1/translate`, API key `vyk_…`).
 /// The server applies its own prompt, so lyrics go stanza by stanza as plain text and are
 /// matched back line by line; a stanza whose line count changes is redone one line at a time.
-class VyniloServerEngine implements TranslationEngine {
+class VinyloServerEngine implements TranslationEngine {
   final String baseURL;
   final String apiKey;
   final String? model;
   final http.Client client;
 
-  VyniloServerEngine(this.baseURL, this.apiKey, {this.model, http.Client? client}) : client = client ?? http.Client();
+  VinyloServerEngine(this.baseURL, this.apiKey, {this.model, http.Client? client}) : client = client ?? http.Client();
 
   static const defaultURL = 'https://yuribinserver.tailf72010.ts.net:8448';
 
   String get _base => baseURL.trim().replaceAll(RegExp(r'/+$'), '');
 
   @override
-  String get id => 'vynilo:${model ?? 'default'}';
+  String get id => 'vinylo:${model ?? 'default'}';
   @override
   bool get isAvailable => baseURL.isNotEmpty && apiKey.isNotEmpty;
   @override
-  EngineKind get kind => EngineKind.vynilo;
+  EngineKind get kind => EngineKind.vinylo;
 
   Future<String> translate(String text, Language target) async {
     if (!isAvailable) throw LLMError.missingAPIKey;
@@ -1104,7 +1104,7 @@ class VyniloServerEngine implements TranslationEngine {
   @override
   Future<Explanation> explain(LyricLine line, List<LyricLine> context, Language target) async => throw const LLMError(
       LLMErrorKind.unavailable,
-      detail: 'Vynilo 서버는 번역 전용이에요. 해설은 온디바이스, 게이트웨이, Claude, Gemini 엔진에서 볼 수 있어요.');
+      detail: 'Vinylo 서버는 번역 전용이에요. 해설은 온디바이스, 게이트웨이, Claude, Gemini 엔진에서 볼 수 있어요.');
 
   /// `GET /v1/config` with the key: checks the key and lists the server's models.
   static Future<List<String>> listModels(String baseURL, String apiKey, {http.Client? client}) async {

@@ -1,8 +1,8 @@
-package com.vynilo.llm
+package com.vinylo.llm
 
-/** JNI entry points in libvynilo_llm.so (src/main/cpp/vynilo_llm.cpp, llama.cpp b11913). */
+/** JNI entry points in libvinylo_llm.so (src/main/cpp/vinylo_llm.cpp, llama.cpp b11913). */
 object LlamaNative {
-    val loaded: Boolean = runCatching { System.loadLibrary("vynilo_llm") }.isSuccess
+    val loaded: Boolean = runCatching { System.loadLibrary("vinylo_llm") }.isSuccess
 
     fun interface TokenCallback { fun onToken(bytes: ByteArray) }
 

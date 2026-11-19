@@ -450,7 +450,7 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
         ),
       ),
       if (_hasReadings(model))
-        Positioned(top: 0, right: 12, child: _ReadingToggle(on: model.readingOn(id), onChanged: (v) => model.setReading(id, v))),
+        Positioned(top: 0, right: 0, child: _ReadingToggle(on: model.readingOn(id), onChanged: (v) => model.setReading(id, v))),
       if (!_following && current != null)
         Positioned(
           left: 0,
@@ -824,35 +824,57 @@ class _Backdrop extends AnimatedWidget {
 
 /// 발음 on/off, floating at the top right of the lyrics (feedback 11/19 #8): ON shows the reading,
 /// the original and the translation; OFF the original and the translation. Kept per song.
+/// Figma "06 플레이어 · 가사 v2" › 독음 토글: a label and a small black/white switch. The label
+/// names what a tap does: "발음 보기" while hidden, "발음 가리기" while shown.
 class _ReadingToggle extends StatelessWidget {
   final bool on;
   final ValueChanged<bool> onChanged;
   const _ReadingToggle({required this.on, required this.onChanged});
 
+  static const _white = Color(0xFFF3F4F6);
+  static const _offTrack = Color(0xFF2B2E35);
+  static const _offStroke = Color(0xFF393D46);
+
   @override
   Widget build(BuildContext context) {
-    final fg = on ? const Color(0xFF15171C) : PlayerPalette.fg;
+    final label = on ? tr('발음 가리기') : tr('발음 보기');
+    final duration = MediaQuery.of(context).disableAnimations ? Duration.zero : const Duration(milliseconds: 180);
     return Semantics(
-      toggled: on,
-      label: tr('발음 표시'),
+      button: true,
+      label: label,
       excludeSemantics: true,
-      child: Material(
-        color: on ? PlayerPalette.brand : const Color(0x6615171C),
-        shape: StadiumBorder(side: BorderSide(color: on ? PlayerPalette.brand : PlayerPalette.placeholder, width: 1)),
-        child: InkWell(
-          customBorder: const StadiumBorder(),
-          onTap: () {
-            HapticFeedback.selectionClick();
-            onChanged(!on);
-          },
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Text('가', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: fg)),
-              const SizedBox(width: 5),
-              Text(on ? tr('발음 ON') : tr('발음 OFF'), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: fg)),
-            ]),
-          ),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onChanged(!on);
+        },
+        child: Padding(
+          // Figma: 20 px from the edge, 4 px above and below; the padding also widens the tap area.
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: -0.24, color: _white)),
+            const SizedBox(width: 8),
+            AnimatedContainer(
+              duration: duration,
+              curve: Curves.easeOut,
+              width: 28,
+              height: 16,
+              // The 1 px border plus 1 px padding keeps the 12 px knob 2 px from the edge, as in Figma.
+              padding: const EdgeInsets.all(1),
+              decoration: BoxDecoration(
+                color: on ? _white : _offTrack,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: on ? _white : _offStroke, width: 1),
+              ),
+              child: AnimatedAlign(
+                duration: duration,
+                curve: Curves.easeOut,
+                alignment: on ? Alignment.centerRight : Alignment.centerLeft,
+                child: Container(width: 12, height: 12, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.black)),
+              ),
+            ),
+          ]),
         ),
       ),
     );

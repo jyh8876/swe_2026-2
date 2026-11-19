@@ -1,4 +1,4 @@
-package com.vynilo.lyrics
+package com.vinylo.lyrics
 
 import android.app.Activity
 import com.spotify.android.appremote.api.ConnectionParams
@@ -15,8 +15,8 @@ import io.flutter.plugin.common.MethodChannel
  * background, so the Spotify app is never brought to the front, and player state is pushed the
  * moment it changes instead of polled from the Web API every 3 s.
  *
- * Channels: "vynilo/spotify_remote" (installed, connect, disconnect, play, pause, resume, seek, next,
- * previous, state) and "vynilo/spotify_remote/state" (player state events).
+ * Channels: "vinylo/spotify_remote" (installed, connect, disconnect, play, pause, resume, seek, next,
+ * previous, state) and "vinylo/spotify_remote/state" (player state events).
  */
 class SpotifyRemoteBridge(private val activity: Activity, messenger: BinaryMessenger) {
     private var remote: SpotifyAppRemote? = null
@@ -24,7 +24,7 @@ class SpotifyRemoteBridge(private val activity: Activity, messenger: BinaryMesse
     private var sink: EventChannel.EventSink? = null
 
     init {
-        MethodChannel(messenger, "vynilo/spotify_remote").setMethodCallHandler { call, result ->
+        MethodChannel(messenger, "vinylo/spotify_remote").setMethodCallHandler { call, result ->
             when (call.method) {
                 "installed" -> result.success(SpotifyAppRemote.isSpotifyInstalled(activity))
                 "connected" -> result.success(remote?.isConnected == true)
@@ -61,7 +61,7 @@ class SpotifyRemoteBridge(private val activity: Activity, messenger: BinaryMesse
                 else -> result.notImplemented()
             }
         }
-        EventChannel(messenger, "vynilo/spotify_remote/state").setStreamHandler(object : EventChannel.StreamHandler {
+        EventChannel(messenger, "vinylo/spotify_remote/state").setStreamHandler(object : EventChannel.StreamHandler {
             override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
                 sink = events
                 remote?.let { subscribe(it) }

@@ -1,4 +1,4 @@
-# Vynilo app (Flutter)
+# Vinylo app (Flutter)
 
 Version 0.11.0, Android package `com.vinylo.app`, shown as **Vinylo**. Named DAY-OFF / LyricsTranslator up to 0.7.0.
 
@@ -12,7 +12,7 @@ Version 0.11.0, Android package `com.vinylo.app`, shown as **Vinylo**. Named DAY
   - Manual add with LRC auto-detection, and a duplicate check.
 - **Translation engines:**
   - On-device llama.cpp with Gemma 4 E2B (downloaded in the app, Android arm64).
-  - The Vynilo server (self-hosted, over Tailscale).
+  - The Vinylo server (self-hosted, over Tailscale).
   - Any OpenAI-compatible gateway, Claude, or Gemini.
 - **How translation runs:**
   - Gateway and Claude responses stream, so lines appear one by one; the translating screen shows a live feed and an animated record.
@@ -35,7 +35,7 @@ app/
 │   ├── models.dart        Song, LyricLine, Translation, Explanation, Phrase, ListenSession, Language
 │   ├── collection.dart    CollectionSnapshot (indexed lookups), JSON repository, export/import, mastery, shelves
 │   ├── lyrics.dart        LRC parser, track normaliser and matcher, .lrc web search
-│   ├── llm.dart           engines (gateway, Claude, Gemini, Vynilo server, on-device), prompts,
+│   ├── llm.dart           engines (gateway, Claude, Gemini, Vinylo server, on-device), prompts,
 │   │                      streaming line parser, output validator, language detection, TranslationJob
 │   ├── playback.dart      NowPlayingSource, SyncEngine (SimulatedSource is for tests)
 │   ├── quiz.dart          lyric quiz builder
@@ -44,9 +44,9 @@ app/
 │                  (Spotify auth / App Remote, secure store, model download, covers), Spotify library,
 │                  theme tokens, i18n (tr() + i18n_strings.dart)
 ├── lib/ui/        one file per screen; player_controls.dart is shared by the player and the line sheet
-├── android/app/src/main/kotlin/com/vynilo/lyrics/   MainActivity, SpotifyRemoteBridge (App Remote SDK),
+├── android/app/src/main/kotlin/com/vinylo/lyrics/   MainActivity, SpotifyRemoteBridge (App Remote SDK),
 │                                                   MediaSessionBridge (any music app)
-├── android/app/src/main/kotlin/com/vynilo/llm/ + src/main/cpp/   llama.cpp JNI bridge
+├── android/app/src/main/kotlin/com/vinylo/llm/ + src/main/cpp/   llama.cpp JNI bridge
 ├── android/app/libs/   spotify-app-remote-release-0.8.0.aar
 └── test/          unit tests (core, engines, streaming, Spotify, App Remote channels, i18n, features, performance)
 ```

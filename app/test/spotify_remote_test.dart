@@ -6,8 +6,8 @@ import 'package:lyrics_translator/core/playback.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-  const methods = MethodChannel('vynilo/spotify_remote');
-  const events = EventChannel('vynilo/spotify_remote/state');
+  const methods = MethodChannel('vinylo/spotify_remote');
+  const events = EventChannel('vinylo/spotify_remote/state');
 
   tearDown(() {
     messenger.setMockMethodCallHandler(methods, null);

@@ -97,8 +97,8 @@ void main() {
     late List<MethodCall> remoteCalls;
     late StreamController<Object?> spotifyState;
     final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-    const methods = MethodChannel('vynilo/spotify_remote');
-    const events = EventChannel('vynilo/spotify_remote/state');
+    const methods = MethodChannel('vinylo/spotify_remote');
+    const events = EventChannel('vinylo/spotify_remote/state');
 
     setUp(() async {
       // The Spotify app (App Remote) is simulated through its platform channels.

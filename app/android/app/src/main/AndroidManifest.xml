@@ -28,20 +28,20 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            <!-- Spotify PKCE redirect: vynilo://spotify-callback -->
+            <!-- Spotify PKCE redirect: vinylo://spotify-callback -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="vynilo" android:host="spotify-callback"/>
+                <data android:scheme="vinylo" android:host="spotify-callback"/>
             </intent-filter>
-            <!-- Screen links, e.g. for Play's pre-launch report: vynilo://open/search?q=…,
-                 vynilo://open/add, vynilo://open/my (see AppModel.openLink). -->
+            <!-- Screen links, e.g. for Play's pre-launch report: vinylo://open/search?q=…,
+                 vinylo://open/add, vinylo://open/my (see AppModel.openLink). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="vynilo" android:host="open"/>
+                <data android:scheme="vinylo" android:host="open"/>
             </intent-filter>
         </activity>
         <!-- Notification access, granted by the user, lets the app follow and control music apps'

@@ -11,7 +11,7 @@
 #include "llama.h"
 #include "ggml-backend.h"
 
-#define TAG "vynilo-llm"
+#define TAG "vinylo-llm"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
@@ -42,7 +42,7 @@ static void unload_locked() {
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_vynilo_llm_LlamaNative_load(JNIEnv *env, jobject, jstring libDir, jstring path, jint nCtx) {
+Java_com_vinylo_llm_LlamaNative_load(JNIEnv *env, jobject, jstring libDir, jstring path, jint nCtx) {
     std::lock_guard<std::mutex> lock(g_mu);
     if (!g_backends) {
         llama_log_set(log_cb, nullptr);
@@ -72,22 +72,22 @@ Java_com_vynilo_llm_LlamaNative_load(JNIEnv *env, jobject, jstring libDir, jstri
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_vynilo_llm_LlamaNative_unload(JNIEnv *, jobject) {
+Java_com_vinylo_llm_LlamaNative_unload(JNIEnv *, jobject) {
     std::lock_guard<std::mutex> lock(g_mu);
     unload_locked();
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_vynilo_llm_LlamaNative_cancel(JNIEnv *, jobject) { g_cancel = true; }
+Java_com_vinylo_llm_LlamaNative_cancel(JNIEnv *, jobject) { g_cancel = true; }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_vynilo_llm_LlamaNative_systemInfo(JNIEnv *env, jobject) {
+Java_com_vinylo_llm_LlamaNative_systemInfo(JNIEnv *env, jobject) {
     return env->NewStringUTF(llama_print_system_info());
 }
 
 // Streams token pieces to callback.onToken(String); returns the number of generated tokens, or -1 on error.
 extern "C" JNIEXPORT jint JNICALL
-Java_com_vynilo_llm_LlamaNative_generate(JNIEnv *env, jobject, jstring jprompt, jint maxTokens, jobject callback) {
+Java_com_vinylo_llm_LlamaNative_generate(JNIEnv *env, jobject, jstring jprompt, jint maxTokens, jobject callback) {
     std::lock_guard<std::mutex> lock(g_mu);
     if (!g_ctx) return -1;
     g_cancel = false;

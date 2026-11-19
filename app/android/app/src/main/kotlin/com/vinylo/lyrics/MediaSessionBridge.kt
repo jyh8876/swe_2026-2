@@ -1,4 +1,4 @@
-package com.vynilo.lyrics
+package com.vinylo.lyrics
 
 import android.app.SearchManager
 import android.content.ActivityNotFoundException
@@ -32,8 +32,8 @@ class MediaListenerService : NotificationListenerService()
 /**
  * Follows whatever music app is playing through the system media sessions, and controls it.
  * Spotify is preferred when several apps have a session and none is playing, and is the app
- * asked first to play a song. Channels: `vynilo/media_session` (methods) and
- * `vynilo/media_session/state` (one map per change, or `{none: true}` when nothing plays).
+ * asked first to play a song. Channels: `vinylo/media_session` (methods) and
+ * `vinylo/media_session/state` (one map per change, or `{none: true}` when nothing plays).
  */
 class MediaSessionBridge(private val context: Context, messenger: BinaryMessenger) {
     private val main = Handler(Looper.getMainLooper())
@@ -46,7 +46,7 @@ class MediaSessionBridge(private val context: Context, messenger: BinaryMessenge
     private val sessionsListener = MediaSessionManager.OnActiveSessionsChangedListener { update(it ?: emptyList()) }
 
     init {
-        MethodChannel(messenger, "vynilo/media_session").setMethodCallHandler { call, result ->
+        MethodChannel(messenger, "vinylo/media_session").setMethodCallHandler { call, result ->
             when (call.method) {
                 "hasAccess" -> result.success(hasAccess())
                 "openAccessSettings" -> { openAccessSettings(); result.success(null) }
@@ -74,7 +74,7 @@ class MediaSessionBridge(private val context: Context, messenger: BinaryMessenge
                 else -> result.notImplemented()
             }
         }
-        EventChannel(messenger, "vynilo/media_session/state").setStreamHandler(object : EventChannel.StreamHandler {
+        EventChannel(messenger, "vinylo/media_session/state").setStreamHandler(object : EventChannel.StreamHandler {
             override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
                 sink = events
                 emit()

@@ -1,8 +1,8 @@
-package com.vynilo.lyrics
+package com.vinylo.lyrics
 
 import android.content.Intent
 import android.net.Uri
-import com.vynilo.llm.LlamaNative
+import com.vinylo.llm.LlamaNative
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -28,7 +28,7 @@ class MainActivity : FlutterActivity() {
         mediaSessions = MediaSessionBridge(applicationContext, messenger)
 
         // On-device llama.cpp (Gemma 4 E2B). All calls run on one background thread.
-        MethodChannel(messenger, "vynilo/llama").setMethodCallHandler { call, result ->
+        MethodChannel(messenger, "vinylo/llama").setMethodCallHandler { call, result ->
             when (call.method) {
                 "available" -> result.success(LlamaNative.loaded)
                 "cancel" -> { if (LlamaNative.loaded) LlamaNative.cancel(); result.success(null) }
@@ -70,8 +70,8 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        // Browser launch and OAuth redirects (Spotify PKCE: vynilo://spotify-callback).
-        links = MethodChannel(messenger, "vynilo/links").apply {
+        // Browser launch and OAuth redirects (Spotify PKCE: vinylo://spotify-callback).
+        links = MethodChannel(messenger, "vinylo/links").apply {
             setMethodCallHandler { call, result ->
                 when (call.method) {
                     "open" -> {

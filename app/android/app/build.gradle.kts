@@ -6,7 +6,7 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// llama.cpp checkout for the on-device engine (release b11913, the same as the Vynilo server).
+// llama.cpp checkout for the on-device engine (release b11913, the same as the Vinylo server).
 // Machine-specific: set llamaCppDir=/path/to/llama.cpp in ~/.gradle/gradle.properties
 // (Flutter rewrites android/local.properties on every build). Without it the app builds
 // without the on-device engine and falls back to the demo engine.
@@ -20,7 +20,7 @@ val keyProperties = Properties().apply {
 }
 
 android {
-    namespace = "com.vynilo.lyrics"
+    namespace = "com.vinylo.lyrics"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -106,7 +106,7 @@ android {
 
     buildTypes {
         release {
-            // The stable Vynilo key keeps the signing fingerprint (registered with Spotify) fixed.
+            // The stable Vinylo key keeps the signing fingerprint (registered with Spotify) fixed.
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             // shared_preferences_android and path_provider_android call their Kotlin side through
             // package:jni, which R8 cannot see: a minified build strips those methods and the app

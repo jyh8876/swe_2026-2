@@ -19,7 +19,7 @@ import 'i18n.dart';
 enum SecretKey {
   claudeAPIKey('api.claude'),
   geminiAPIKey('api.gemini'),
-  vyniloAPIKey('api.vynilo'),
+  vinyloAPIKey('api.vinylo'),
   vinyloSession('vinylo.session'),
   gatewayAPIKey('api.gateway'),
   spotifyRefreshToken('spotify.refresh'),
@@ -30,7 +30,7 @@ enum SecretKey {
 
   static SecretKey? apiKeyFor(EngineKind e) => switch (e) {
         EngineKind.onDevice => null,
-        EngineKind.vynilo => SecretKey.vyniloAPIKey,
+        EngineKind.vinylo => SecretKey.vinyloAPIKey,
         EngineKind.gateway => SecretKey.gatewayAPIKey,
         EngineKind.claude => SecretKey.claudeAPIKey,
         EngineKind.gemini => SecretKey.geminiAPIKey,
@@ -141,9 +141,9 @@ class ModelManager {
   }
 }
 
-/// Platform channel to llama.cpp (android/app/src/main/cpp/vynilo_llm.cpp).
+/// Platform channel to llama.cpp (android/app/src/main/cpp/vinylo_llm.cpp).
 class LocalLlama {
-  static const _channel = MethodChannel('vynilo/llama');
+  static const _channel = MethodChannel('vinylo/llama');
 
   static Future<String> complete(String prompt, int maxTokens) async {
     try {
@@ -173,14 +173,14 @@ class LocalLlama {
 
 /// Non-secret engine settings handed to the factory (server URL, gateway URL, chosen models).
 class EngineConfig {
-  final String vyniloURL;
-  final String vyniloModel;
+  final String vinyloURL;
+  final String vinyloModel;
   final String gatewayURL;
   final String gatewayModel;
   final String claudeModel;
   const EngineConfig({
-    this.vyniloURL = VyniloServerEngine.defaultURL,
-    this.vyniloModel = '',
+    this.vinyloURL = VinyloServerEngine.defaultURL,
+    this.vinyloModel = '',
     this.gatewayURL = '',
     this.gatewayModel = '',
     this.claudeModel = ClaudeEngine.defaultModel,
@@ -191,8 +191,8 @@ class EngineFactory {
   static TranslationEngine make(EngineKind kind, String? apiKey, [EngineConfig config = const EngineConfig()]) => switch (kind) {
         EngineKind.claude => ClaudeEngine(apiKey ?? '', model: config.claudeModel),
         EngineKind.gemini => GeminiEngine(apiKey ?? ''),
-        EngineKind.vynilo =>
-          VyniloServerEngine(config.vyniloURL, apiKey ?? '', model: config.vyniloModel.isEmpty ? null : config.vyniloModel),
+        EngineKind.vinylo =>
+          VinyloServerEngine(config.vinyloURL, apiKey ?? '', model: config.vinyloModel.isEmpty ? null : config.vinyloModel),
         EngineKind.gateway => GatewayEngine(config.gatewayURL, apiKey ?? '', config.gatewayModel),
         // Without the downloaded model there is no on-device engine; nothing is faked.
         EngineKind.onDevice => ModelManager.isSupported && ModelManager.isInstalled
@@ -209,9 +209,9 @@ class EngineFactory {
 
 // ─────────────────────────────── Links (OAuth redirects) ───────────────────────────────
 
-/// Opens URLs in the browser and receives `vynilo://…` redirects from the Android activity.
+/// Opens URLs in the browser and receives `vinylo://…` redirects from the Android activity.
 class Links {
-  static const _channel = MethodChannel('vynilo/links');
+  static const _channel = MethodChannel('vinylo/links');
   static final _controller = StreamController<Uri>.broadcast();
   static bool _ready = false;
 
@@ -237,7 +237,7 @@ class Links {
 /// The client ID is passed at build time: `--dart-define=SPOTIFY_CLIENT_ID=…`.
 class SpotifyAuth {
   static const clientID = String.fromEnvironment('SPOTIFY_CLIENT_ID');
-  static const redirect = 'vynilo://spotify-callback';
+  static const redirect = 'vinylo://spotify-callback';
   /// Playback plus library reads (playlists, saved albums, liked songs) for the Spotify browser.
   static const scopes = 'user-read-currently-playing user-read-playback-state user-modify-playback-state '
       'playlist-read-private playlist-read-collaborative user-library-read';
@@ -279,9 +279,9 @@ class SpotifyAuth {
     }));
   }
 
-  /// Handles `vynilo://spotify-callback?code=…&state=…`. Returns false if it is not a Spotify redirect.
+  /// Handles `vinylo://spotify-callback?code=…&state=…`. Returns false if it is not a Spotify redirect.
   Future<bool> finishLogin(Uri uri) async {
-    if (uri.scheme != 'vynilo' || uri.host != 'spotify-callback') return false;
+    if (uri.scheme != 'vinylo' || uri.host != 'spotify-callback') return false;
     final err = uri.queryParameters['error'];
     if (err != null) throw SpotifyException(tr('Spotify 로그인이 취소됐어요 ({0}).', [err]));
     if (uri.queryParameters['state'] != _state || _verifier == null) throw SpotifyException(tr('Spotify 로그인을 다시 시도해 주세요.'));
@@ -342,8 +342,8 @@ class SpotifyException implements Exception {
 /// installed Spotify app in the background — the Spotify app is never brought to the front — and
 /// pushes player state the moment it changes. Library reads and search still use the Web API.
 class SpotifyRemote {
-  static const _channel = MethodChannel('vynilo/spotify_remote');
-  static const _events = EventChannel('vynilo/spotify_remote/state');
+  static const _channel = MethodChannel('vinylo/spotify_remote');
+  static const _events = EventChannel('vinylo/spotify_remote/state');
 
   /// Tests set this to run the Android path on the desktop.
   static bool? debugSupported;
@@ -494,8 +494,8 @@ class SpotifyRemoteSource implements NowPlayingSource {
 /// Android media sessions: what any music app is playing, and its controls. Reading other apps'
 /// sessions needs notification access, which the user grants once in Android settings.
 class MusicApp {
-  static const _channel = MethodChannel('vynilo/media_session');
-  static const events = EventChannel('vynilo/media_session/state');
+  static const _channel = MethodChannel('vinylo/media_session');
+  static const events = EventChannel('vinylo/media_session/state');
 
   /// On for Android again (Play Store builds): `MediaSessionBridge.kt` follows and controls
   /// Spotify (preferred) or another music app once notification access is granted. Play Protect
