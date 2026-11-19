@@ -32,7 +32,7 @@ class _RecordingEngine implements TranslationEngine {
 List<LyricLine> _lines(List<String> texts) => [for (var i = 0; i < texts.length; i++) LyricLine(songID: 's', index: i, text: texts[i])];
 
 void main() {
-  group('독음 (reading)', () {
+  group('발음 (reading)', () {
     test('an entry\'s "r" becomes the reading; a missing or blank one is left out', () {
       final r = OutputValidator.entryResult(0, {'i': 0, 't': '너의 이름은', 'r': '키미노 나와'}) as Translated;
       expect(r.text, '너의 이름은');

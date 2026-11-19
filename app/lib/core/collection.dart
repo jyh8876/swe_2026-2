@@ -86,7 +86,7 @@ class CollectionSnapshot {
     };
   }
 
-  /// 독음 shown above a line, when its translation came with one.
+  /// 발음 shown above a line, when its translation came with one.
   String? readingText(String songID, int index, String target) {
     final t = translation(songID, index, target);
     return t?.outcome == Outcome.translated ? t?.reading : null;

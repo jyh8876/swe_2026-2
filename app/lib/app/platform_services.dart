@@ -630,11 +630,13 @@ class MusicAppSource implements NowPlayingSource {
 class CoverStore {
   static late Directory dir;
 
-  /// Copies the picked (already downscaled to ≤1024 px) image into app storage.
+  /// Copies the picked (already downscaled to ≤1024 px) image into app storage. The name changes
+  /// each time: reusing `<songID>.jpg` overwrote the file in place, and Flutter's image cache
+  /// (keyed by path) kept showing the old cover, so "앨범 커버 수정" seemed to do nothing.
   static String? save(String sourcePath, String songID) {
     try {
       dir.createSync(recursive: true);
-      final name = '$songID.jpg';
+      final name = '$songID-${DateTime.now().millisecondsSinceEpoch}.jpg';
       File(sourcePath).copySync('${dir.path}/$name');
       return name;
     } catch (_) {

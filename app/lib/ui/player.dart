@@ -401,7 +401,7 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
     if (on && _lastIndex != null) _placeList(_lastIndex!, at: at);
   }
 
-  /// The toggle shows only for songs that have a reading (독음) to show.
+  /// The toggle shows only for songs that have a reading (발음) to show.
   bool _hasReadings(AppModel model) {
     if (model.translationSkipped(id)) return false;
     final target = model.targetFor(id).code;
@@ -514,7 +514,7 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
                           : _openLine(line.index, mode),
               onLongPress: rec != null ? null : () => _openLine(line.index, mode),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                // 독음 sits right above the original line, small, like ruby text.
+                // 발음 sits right above the original line, small, like ruby text.
                 if (reading != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 2),
@@ -822,7 +822,7 @@ class _Backdrop extends AnimatedWidget {
 /// Seek bar from the prototype: saved lines are mint segments with star pins; while scrubbing
 /// the track thickens and the playhead snaps onto saved lines.
 
-/// 독음 on/off, floating at the top right of the lyrics (feedback 11/19 #8): ON shows the reading,
+/// 발음 on/off, floating at the top right of the lyrics (feedback 11/19 #8): ON shows the reading,
 /// the original and the translation; OFF the original and the translation. Kept per song.
 class _ReadingToggle extends StatelessWidget {
   final bool on;
@@ -834,7 +834,7 @@ class _ReadingToggle extends StatelessWidget {
     final fg = on ? const Color(0xFF15171C) : PlayerPalette.fg;
     return Semantics(
       toggled: on,
-      label: tr('독음 표시'),
+      label: tr('발음 표시'),
       excludeSemantics: true,
       child: Material(
         color: on ? PlayerPalette.brand : const Color(0x6615171C),
@@ -850,7 +850,7 @@ class _ReadingToggle extends StatelessWidget {
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Text('가', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: fg)),
               const SizedBox(width: 5),
-              Text(on ? tr('독음 ON') : tr('독음 OFF'), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: fg)),
+              Text(on ? tr('발음 ON') : tr('발음 OFF'), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: fg)),
             ]),
           ),
         ),

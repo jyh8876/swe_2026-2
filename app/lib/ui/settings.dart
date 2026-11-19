@@ -149,9 +149,9 @@ class _SettingsViewState extends State<SettingsView> {
           ),
         ]),
         _section(tr('가사 기본 설정'), [
-          // 해석 is always shown; 독음 is toggled per song in the player, this is its default.
+          // 해석 is always shown; 발음 is toggled per song in the player, this is its default.
           SwitchListTile(
-            title: Text(tr('독음 표시'), style: TextStyle(color: t.textPrimary)),
+            title: Text(tr('발음 표시'), style: TextStyle(color: t.textPrimary)),
             subtitle: Text(tr('새 곡의 기본값이에요. 곡마다 재생 화면 오른쪽 위에서 바꿀 수 있어요.'), style: TextStyle(fontSize: 12, color: t.textTertiary)),
             value: s.showReading,
             onChanged: (v) => model.updateSettings((x) => x.showReading = v),

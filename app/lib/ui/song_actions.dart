@@ -145,7 +145,7 @@ String reportReasonLabel(ReportReason r) => switch (r) {
       ReportReason.wrong => tr('뜻이 틀려요'),
       ReportReason.awkward => tr('어색해요'),
       ReportReason.offensive => tr('비속어·불쾌한 표현이 있어요'),
-      ReportReason.reading => tr('독음이 틀려요'),
+      ReportReason.reading => tr('발음이 틀려요'),
       ReportReason.other => tr('기타'),
     };
 

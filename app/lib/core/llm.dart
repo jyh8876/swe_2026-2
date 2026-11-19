@@ -45,7 +45,7 @@ sealed class LineResult {
 class Translated extends LineResult {
   final String text;
 
-  /// 독음 of the original line in the reader's script, when the engine gives one.
+  /// 발음 of the original line in the reader's script, when the engine gives one.
   final String? reading;
   const Translated(super.index, this.text, {this.reading});
 }
@@ -141,9 +141,9 @@ class Prompts {
   /// and "r" (sound) apart and stops copying lines in other scripts.
   static const version = 'p4';
 
-  /// The script a reader of [target] uses to read how a foreign line sounds (독음).
+  /// The script a reader of [target] uses to read how a foreign line sounds (발음).
   static String readingScript(Language target) => switch (target.code) {
-        'ko' => 'Hangul letters that spell the sound (독음)',
+        'ko' => 'Hangul letters that spell the sound (발음)',
         'ja' => 'Katakana',
         'zh' => 'Pinyin with tone marks for Chinese lines, otherwise Latin letters',
         _ => 'Latin letters (romanization)',

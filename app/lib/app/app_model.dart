@@ -124,7 +124,7 @@ class AppSettings {
   String uiLanguage = Language.korean.code;
   bool showTranslation = true;
 
-  /// 독음 above each original line, when the translation has one.
+  /// 발음 above each original line, when the translation has one.
   bool showReading = true;
 
   /// One-time notice before the first cloud translation (SIR-3).
@@ -501,7 +501,7 @@ class AppModel extends ChangeNotifier {
   static const sameLanguageEngine = 'same-language';
 
   /// True when the song was not translated because its lyrics are already in the target language.
-  /// 독음 for this song: its own toggle, else the default for new songs (마이페이지).
+  /// 발음 for this song: its own toggle, else the default for new songs (마이페이지).
   bool readingOn(String songID) => collection.song(songID)?.showReading ?? settings.showReading;
 
   void setReading(String songID, bool on) => _mutate((s) => s.updateSong(songID, (song) => song.showReading = on));

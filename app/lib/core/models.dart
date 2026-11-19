@@ -92,7 +92,7 @@ class Song {
   /// Translation language chosen for this song (0.14.0); null follows the app setting.
   String? targetLanguage;
 
-  /// 독음 shown for this song (the player's floating toggle); null follows the app setting.
+  /// 발음 shown for this song (the player's floating toggle); null follows the app setting.
   bool? showReading;
 
   Song({
@@ -203,7 +203,7 @@ class Translation {
   /// Translated text. Null when the line was copied (already in the target language) or failed.
   final String? text;
 
-  /// 독음: how the original line sounds, written in the reader's script (Hangul for Korean).
+  /// 발음: how the original line sounds, written in the reader's script (Hangul for Korean).
   /// Null when the engine gave none (older translations, or the line needs none).
   final String? reading;
   final Outcome outcome;
