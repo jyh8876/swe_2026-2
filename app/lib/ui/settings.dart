@@ -287,7 +287,7 @@ class _SettingsViewState extends State<SettingsView> {
           _destructive(tr('전체 삭제'), _deleteAll),
         ]),
         _section(null, [
-          _row(tr('버전'), trailing: '0.15.2 (${Platform.isIOS ? 'iOS' : 'Android'})'),
+          _row(tr('버전'), trailing: '0.18.1 (${Platform.isIOS ? 'iOS' : 'Android'})'),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
             child: Text(tr('가사는 앱 안의 브라우저에서 찾아 가져오거나 붙여넣어요. 가사와 번역은 이 기기에만 저장되고, 가사는 선택한 번역 엔진으로만 전송돼요. 로그인하면 노래 제목·아티스트와 학습 기록만 서버에 저장돼요.'),
