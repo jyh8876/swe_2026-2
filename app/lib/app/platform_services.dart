@@ -491,8 +491,9 @@ class SpotifyRemoteSource implements NowPlayingSource {
 
 // ─────────────────────────────── Any music app (media sessions) ───────────────────────────────
 
-/// Android media sessions: what any music app is playing, and its controls. Reading other apps'
-/// sessions needs notification access, which the user grants once in Android settings.
+/// What the music app is playing, and its controls. Android follows any app through media
+/// sessions (needs notification access, granted once in Android settings); iOS follows Apple Music
+/// through MusicKit (`AppleMusicBridge.swift`, needs Apple Music access). Same channel on both.
 class MusicApp {
   static const _channel = MethodChannel('vinylo/media_session');
   static const events = EventChannel('vinylo/media_session/state');
@@ -502,7 +503,7 @@ class MusicApp {
   /// may warn about sideloaded APKs that declare a notification listener. Tests set this to run
   /// the Dart path on the desktop.
   static bool? debugSupported;
-  static bool get supported => debugSupported ?? Platform.isAndroid;
+  static bool get supported => debugSupported ?? (Platform.isAndroid || Platform.isIOS);
 
   static Future<bool> hasAccess() async {
     if (!supported) return false;

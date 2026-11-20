@@ -180,7 +180,10 @@ class _SettingsViewState extends State<SettingsView> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-              child: Text(tr('YouTube Music, Spotify, Apple Music, 멜론 등 어떤 앱으로 들어도 가사가 따라와요. 알림 접근 권한으로 지금 재생 중인 곡과 위치만 읽어요.'),
+              child: Text(
+                  Platform.isIOS
+                      ? tr('Apple Music으로 듣는 곡의 가사가 따라와요. 지금 재생 중인 곡과 위치만 읽어요.')
+                      : tr('YouTube Music, Spotify, Apple Music, 멜론 등 어떤 앱으로 들어도 가사가 따라와요. 알림 접근 권한으로 지금 재생 중인 곡과 위치만 읽어요.'),
                   style: TextStyle(fontSize: 12, color: t.textTertiary)),
             ),
           ]),

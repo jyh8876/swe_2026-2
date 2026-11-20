@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'dart:math';
 
 import 'package:flutter/material.dart' hide Route;
@@ -1128,7 +1129,7 @@ class _MusicAppCard extends StatelessWidget {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(tr('음악 앱과 연결하기'), style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: t.textPrimary)),
               const SizedBox(height: 2),
-              Text(tr('어떤 앱으로 들어도 가사가 따라와요'), style: TextStyle(fontSize: 12, color: t.textSecondary)),
+              Text(Platform.isIOS ? tr('Apple Music으로 들으면 가사가 따라와요') : tr('어떤 앱으로 들어도 가사가 따라와요'), style: TextStyle(fontSize: 12, color: t.textSecondary)),
             ]),
           ),
           TextButton(

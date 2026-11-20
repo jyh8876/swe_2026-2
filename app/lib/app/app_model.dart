@@ -1246,7 +1246,10 @@ class AppModel extends ChangeNotifier {
       await MusicApp.openAccessSettings();
     } catch (_) {
       showBanner(AppBanner(tr('설정을 열지 못했어요.')));
+      return;
     }
+    // iOS asks for permission in a system sheet and answers when it is closed: connect right away.
+    if (Platform.isIOS) await attachMusicApp();
   }
 
   /// Follows other music apps (when allowed) and reconnects to the Spotify app, at launch and

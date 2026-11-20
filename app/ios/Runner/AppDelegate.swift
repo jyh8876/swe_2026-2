@@ -15,5 +15,8 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "VinyloLinks") {
       LinkBridge.attach(messenger: registrar.messenger())
     }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "VinyloAppleMusic") {
+      AppleMusicBridge.attach(messenger: registrar.messenger())
+    }
   }
 }

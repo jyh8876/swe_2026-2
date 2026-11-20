@@ -3,6 +3,9 @@
 
 const Map<String, Map<String, String>> uiStrings = {
   'en': {
+    '지금 듣는 곡과 재생 위치를 읽으려면 Apple Music 접근 권한이 필요해요. 다음 화면에서 허용해 주세요. 라이브러리 정보는 기기 밖으로 보내지 않아요.': 'To read the song you\'re playing and its position, Vinylo needs Apple Music access. Allow it on the next screen. Your library info never leaves the device.',
+    'Apple Music으로 듣는 곡의 가사가 따라와요. 지금 재생 중인 곡과 위치만 읽어요.': 'Lyrics follow what you play in Apple Music. Only the playing song and its position are read.',
+    'Apple Music으로 들으면 가사가 따라와요': 'Lyrics follow along in Apple Music',
     '예상 시간 계산 중…': 'Estimating time…',
     '예상 시간 약 {0}분': 'About {0} min',
     'API 키 페이지로 바로 가요': 'Go straight to the API key page',
@@ -525,6 +528,9 @@ const Map<String, Map<String, String>> uiStrings = {
     '키를 복사해서 돌아와요': 'Copy the key and come back',
   },
   'zh': {
+    'Apple Music으로 듣는 곡의 가사가 따라와요. 지금 재생 중인 곡과 위치만 읽어요.': '用 Apple Music 听歌时歌词会跟随。只读取正在播放的歌曲和进度。',
+    'Apple Music으로 들으면 가사가 따라와요': '用 Apple Music 听歌，歌词会跟随',
+    '지금 듣는 곡과 재생 위치를 읽으려면 Apple Music 접근 권한이 필요해요. 다음 화면에서 허용해 주세요. 라이브러리 정보는 기기 밖으로 보내지 않아요.': '要读取正在播放的歌曲和进度，需要 Apple Music 访问权限。请在下一个画面中允许。资料库信息不会离开设备。',
     '예상 시간 계산 중…': '正在估算时间…',
     '예상 시간 약 {0}분': '预计约 {0} 分钟',
     'API 키 페이지로 바로 가요': '直接打开 API 密钥页面',
@@ -1047,6 +1053,9 @@ const Map<String, Map<String, String>> uiStrings = {
     '키를 복사해서 돌아와요': '复制密钥后返回',
   },
   'ja': {
+    'Apple Music으로 듣는 곡의 가사가 따라와요. 지금 재생 중인 곡과 위치만 읽어요.': 'Apple Music で聴く曲の歌詞が追従します。再生中の曲と位置だけを読み取ります。',
+    'Apple Music으로 들으면 가사가 따라와요': 'Apple Music で聴くと歌詞が追従します',
+    '지금 듣는 곡과 재생 위치를 읽으려면 Apple Music 접근 권한이 필요해요. 다음 화면에서 허용해 주세요. 라이브러리 정보는 기기 밖으로 보내지 않아요.': '再生中の曲と位置を読み取るには Apple Music へのアクセス許可が必要です。次の画面で許可してください。ライブラリ情報は端末の外に送りません。',
     '예상 시간 계산 중…': '予想時間を計算中…',
     '예상 시간 약 {0}분': '予想時間 約{0}分',
     'API 키 페이지로 바로 가요': 'APIキーのページへ直接移動',

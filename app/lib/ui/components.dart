@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -561,8 +562,10 @@ void showMessage(BuildContext context, String message) {
 Future<bool> confirmMusicAppAccess(BuildContext context) => confirmDialog(
       context,
       title: tr('음악 앱과 연결할까요?'),
-      message: tr('지금 듣는 곡과 재생 위치를 읽으려면 Android의 \'알림 접근\' 권한이 필요해요. 다음 화면에서 Vinylo를 켜 주세요. 알림 내용은 읽거나 저장하지 않아요.'),
-      confirm: tr('설정 열기'),
+      message: Platform.isIOS
+          ? tr('지금 듣는 곡과 재생 위치를 읽으려면 Apple Music 접근 권한이 필요해요. 다음 화면에서 허용해 주세요. 라이브러리 정보는 기기 밖으로 보내지 않아요.')
+          : tr('지금 듣는 곡과 재생 위치를 읽으려면 Android의 \'알림 접근\' 권한이 필요해요. 다음 화면에서 Vinylo를 켜 주세요. 알림 내용은 읽거나 저장하지 않아요.'),
+      confirm: Platform.isIOS ? tr('계속') : tr('설정 열기'),
     );
 
 // ─────────────── Translation language (Figma 160:4943 "번역 언어 설정") ───────────────
