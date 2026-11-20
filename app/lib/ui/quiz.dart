@@ -32,8 +32,6 @@ class QuizHomeView extends StatelessWidget {
             _stat(t, tr('{0}곡', [songs.length]), tr('풀 수 있는 노래')),
           ]),
         ),
-        const SizedBox(height: 12),
-        Text(tr('가사 빈칸을 채우면 다음 레벨이 열려요. 레벨 3까지 깨면 노래를 정복해요.'), style: TextStyle(fontSize: 13, color: t.textTertiary)),
         const SizedBox(height: 16),
         if (songs.isEmpty)
           Padding(
@@ -50,7 +48,7 @@ class QuizHomeView extends StatelessWidget {
             ]),
           )
         else
-          for (final s in songs) Padding(padding: const EdgeInsets.only(bottom: 10), child: _SongQuizRow(song: s)),
+          for (final (i, s) in songs.indexed) FadeIn(index: i, child: Padding(padding: const EdgeInsets.only(bottom: 10), child: _SongQuizRow(song: s))),
       ]),
     );
   }

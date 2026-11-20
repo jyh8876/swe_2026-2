@@ -33,7 +33,8 @@ class LyricsTranslatorApp extends StatefulWidget {
   State<LyricsTranslatorApp> createState() => _LyricsTranslatorAppState();
 }
 
-class _LyricsTranslatorAppState extends State<LyricsTranslatorApp> with WidgetsBindingObserver {
+class _LyricsTranslatorAppState extends State<LyricsTranslatorApp>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
@@ -47,7 +48,8 @@ class _LyricsTranslatorAppState extends State<LyricsTranslatorApp> with WidgetsB
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) => widget.model.handleLifecycle(state);
+  void didChangeAppLifecycleState(AppLifecycleState state) =>
+      widget.model.handleLifecycle(state);
 
   @override
   Widget build(BuildContext context) {
@@ -67,10 +69,17 @@ class _LyricsTranslatorAppState extends State<LyricsTranslatorApp> with WidgetsB
             theme: theme.material,
             builder: (context, child) => AppThemeScope(
               theme: theme,
-              child: AnnotatedRegion<SystemUiOverlayStyle>(value: theme.isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark, child: child!),
+              child: AnnotatedRegion<SystemUiOverlayStyle>(
+                value: theme.isDark
+                    ? SystemUiOverlayStyle.light
+                    : SystemUiOverlayStyle.dark,
+                child: child!,
+              ),
             ),
             // First run: sign-in and the Gemini key (Figma 00 to 00-4); then the tabs.
-            home: widget.model.settings.hasOnboarded ? const MainTabView() : const OnboardingFlow(),
+            home: widget.model.settings.hasOnboarded
+                ? const MainTabView()
+                : const OnboardingFlow(),
           );
         },
       ),
@@ -85,14 +94,30 @@ class MainTabView extends StatefulWidget {
   State<MainTabView> createState() => _MainTabViewState();
 }
 
-class _MainTabViewState extends State<MainTabView> {
+class _MainTabViewState extends State<MainTabView>
+    with SingleTickerProviderStateMixin {
   final _libraryNav = GlobalKey<NavigatorState>();
+  // A short cross-fade when the tab changes; the tabs themselves stay alive in the IndexedStack.
+  late final AnimationController _fade = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 200),
+    value: 1,
+  );
+
+  @override
+  void dispose() {
+    _fade.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final model = context.model;
     final t = context.theme;
-    final onPlayer = model.selectedTab == AppTab.library && model.libraryPath.isNotEmpty && model.libraryPath.last is PlayerRoute;
+    final onPlayer =
+        model.selectedTab == AppTab.library &&
+        model.libraryPath.isNotEmpty &&
+        model.libraryPath.last is PlayerRoute;
     // The player is full-screen: no tab bar, as in the prototype.
     final showChrome = !onPlayer;
     final showMini = showChrome && model.nowPlaying != null;
@@ -110,31 +135,52 @@ class _MainTabViewState extends State<MainTabView> {
       child: Scaffold(
         body: Stack(
           children: [
-            IndexedStack(
-              index: model.selectedTab.index,
-              children: [
-                // The library stack is driven by model.libraryPath, so any screen can reset the flow.
-                Navigator(
-                  key: _libraryNav,
-                  pages: [
-                    const MaterialPage(key: ValueKey('library'), child: LibraryView()),
-                    for (final (i, r) in model.libraryPath.indexed) _page(r, i),
-                  ],
-                  onDidRemovePage: (page) {
-                    // Called for user pops (back gesture); declarative removals no longer match the path.
-                    final path = model.libraryPath;
-                    for (var i = 0; i < path.length; i++) {
-                      if (_keyFor(path[i], i) == page.key) {
-                        model.setPath(path.sublist(0, i));
-                        return;
+            FadeTransition(
+              opacity: CurvedAnimation(parent: _fade, curve: Curves.easeOut),
+              child: IndexedStack(
+                index: model.selectedTab.index,
+                children: [
+                  // The library stack is driven by model.libraryPath, so any screen can reset the flow.
+                  Navigator(
+                    key: _libraryNav,
+                    pages: [
+                      const MaterialPage(
+                        key: ValueKey('library'),
+                        child: LibraryView(),
+                      ),
+                      for (final (i, r) in model.libraryPath.indexed)
+                        _page(r, i),
+                    ],
+                    onDidRemovePage: (page) {
+                      // Called for user pops (back gesture); declarative removals no longer match the path.
+                      final path = model.libraryPath;
+                      for (var i = 0; i < path.length; i++) {
+                        if (_keyFor(path[i], i) == page.key) {
+                          model.setPath(path.sublist(0, i));
+                          return;
+                        }
                       }
-                    }
-                  },
-                ),
-                const QuizHomeView(),
-                const PhraseBoxView(),
-                const SettingsView(asTab: true),
-              ],
+                    },
+                  ),
+                  const QuizHomeView(),
+                  const PhraseBoxView(),
+                  const SettingsView(asTab: true),
+                ],
+              ),
+            ),
+            // Swipe right from the left edge to go back (iOS and Android alike).
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 28,
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onHorizontalDragEnd: (d) {
+                  final v = d.primaryVelocity ?? 0;
+                  if (v > 300) _swipeBack(model);
+                },
+              ),
             ),
             if (model.banner case final b?)
               Positioned(
@@ -144,7 +190,9 @@ class _MainTabViewState extends State<MainTabView> {
                 child: BannerView(
                   message: b.message,
                   actionTitle: b.actionTitle,
-                  action: b.actionTitle == null ? null : (b.onAction ?? model.openSettings),
+                  action: b.actionTitle == null
+                      ? null
+                      : (b.onAction ?? model.openSettings),
                   dismiss: () => model.showBanner(null),
                 ),
               ),
@@ -153,6 +201,23 @@ class _MainTabViewState extends State<MainTabView> {
         bottomNavigationBar: showChrome ? _tabBar(model, t, showMini) : null,
       ),
     );
+  }
+
+  /// Edge swipe: one step back in the library stack, or from another tab to Home.
+  /// The translating screen cannot be left (it is working); "saved" goes straight home like its button.
+  void _swipeBack(AppModel model) {
+    if (model.selectedTab != AppTab.library) {
+      model.selectTab(AppTab.library);
+    } else if (model.libraryPath.isNotEmpty) {
+      switch (model.libraryPath.last) {
+        case TranslatingRoute():
+          break;
+        case SavedRoute():
+          model.setPath([]);
+        default:
+          model.pop();
+      }
+    }
   }
 
   /// The tab bar, with the mini player docked on top of it as one full-width box.
@@ -171,12 +236,22 @@ class _MainTabViewState extends State<MainTabView> {
             onTap: () {
               // Tapping Home again returns the library to its root.
               if (on && tab == AppTab.library) model.setPath([]);
+              if (!on) {
+                HapticFeedback.selectionClick();
+                _fade.forward(from: 0);
+              }
               model.selectTab(tab);
             },
             child: SizedBox(
               height: 58,
               // Figma (light home): icons only, filled when selected; the label stays for screen readers.
-              child: Center(child: Icon(on ? selectedIcon : icon, size: 26, color: on ? t.textPrimary : t.textTertiary)),
+              child: Center(
+                child: Icon(
+                  on ? selectedIcon : icon,
+                  size: 26,
+                  color: on ? t.textPrimary : t.textTertiary,
+                ),
+              ),
             ),
           ),
         ),
@@ -190,13 +265,40 @@ class _MainTabViewState extends State<MainTabView> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (showMini) ...[const MiniPlayer(), Divider(height: 1, thickness: 1, color: t.stroke.withValues(alpha: 0.6))],
+            if (showMini) ...[
+              const MiniPlayer(),
+              Divider(
+                height: 1,
+                thickness: 1,
+                color: t.stroke.withValues(alpha: 0.6),
+              ),
+            ],
             Row(
               children: [
-                tab(AppTab.library, Icons.home_outlined, Icons.home_rounded, tr('라이브러리')),
-                tab(AppTab.quiz, Icons.quiz_outlined, Icons.quiz_rounded, tr('퀴즈')),
-                tab(AppTab.phrases, Icons.star_outline_rounded, Icons.star_rounded, tr('문장 저장함')),
-                tab(AppTab.my, Icons.person_outline_rounded, Icons.person_rounded, tr('마이페이지')),
+                tab(
+                  AppTab.library,
+                  Icons.home_outlined,
+                  Icons.home_rounded,
+                  tr('라이브러리'),
+                ),
+                tab(
+                  AppTab.quiz,
+                  Icons.quiz_outlined,
+                  Icons.quiz_rounded,
+                  tr('퀴즈'),
+                ),
+                tab(
+                  AppTab.phrases,
+                  Icons.star_outline_rounded,
+                  Icons.star_rounded,
+                  tr('문장 저장함'),
+                ),
+                tab(
+                  AppTab.my,
+                  Icons.person_outline_rounded,
+                  Icons.person_rounded,
+                  tr('마이페이지'),
+                ),
               ],
             ),
           ],
@@ -219,12 +321,18 @@ class _MainTabViewState extends State<MainTabView> {
 
   Page<void> _page(Route r, int i) {
     final Widget child = switch (r) {
-      SearchRoute(:final prefill, :final hint) => SearchView(initialQuery: prefill, hint: hint),
+      SearchRoute(:final prefill, :final hint) => SearchView(
+        initialQuery: prefill,
+        hint: hint,
+      ),
       AddRoute(:final draft) => AddSongView(draft: draft),
       CoverSelectRoute(:final draft) => CoverSelectView(draft: draft),
       TranslatingRoute(:final songID) => TranslatingView(songID: songID),
       SavedRoute(:final songID) => SavedView(songID: songID),
-      PlayerRoute(:final songID, :final openTiming) => PlayerView(songID: songID, openTiming: openTiming),
+      PlayerRoute(:final songID, :final openTiming) => PlayerView(
+        songID: songID,
+        openTiming: openTiming,
+      ),
       SpotifyListRoute(:final list) => SpotifyTracksView(list: list),
     };
     return MaterialPage(key: _keyFor(r, i), child: child);

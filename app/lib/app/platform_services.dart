@@ -29,19 +29,21 @@ enum SecretKey {
   const SecretKey(this.raw);
 
   static SecretKey? apiKeyFor(EngineKind e) => switch (e) {
-        EngineKind.onDevice => null,
-        EngineKind.vinylo => SecretKey.vinyloAPIKey,
-        EngineKind.gateway => SecretKey.gatewayAPIKey,
-        EngineKind.claude => SecretKey.claudeAPIKey,
-        EngineKind.gemini => SecretKey.geminiAPIKey,
-      };
+    EngineKind.onDevice => null,
+    EngineKind.vinylo => SecretKey.vinyloAPIKey,
+    EngineKind.gateway => SecretKey.gatewayAPIKey,
+    EngineKind.claude => SecretKey.claudeAPIKey,
+    EngineKind.gemini => SecretKey.geminiAPIKey,
+  };
 }
 
 /// Keychain on iOS, Android Keystore-backed encrypted storage on Android.
 /// Values are mirrored in memory so the UI can read them synchronously.
 class SecureStore {
   final _storage = const FlutterSecureStorage(
-    iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock_this_device),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock_this_device,
+    ),
   );
   final _cache = <SecretKey, String>{};
 
@@ -77,7 +79,9 @@ class SecureStore {
 }
 
 /// Masks a key for display after saving (RQ-14): "sk-ant-…a1b2".
-String maskSecret(String s) => s.length <= 8 ? '•' * s.length : '${s.substring(0, 6)}…${s.substring(s.length - 4)}';
+String maskSecret(String s) => s.length <= 8
+    ? '•' * s.length
+    : '${s.substring(0, 6)}…${s.substring(s.length - 4)}';
 
 // ─────────────────────────────── Engines (Win-AGRE-4) ───────────────────────────────
 
@@ -87,12 +91,15 @@ class ModelManager {
   static const modelName = 'gemma-4-e2b';
   static const fileName = 'gemma-4-E2B_q4_0-it.gguf';
   static const approximateBytes = 3349516256;
-  static final url = Uri.parse('https://huggingface.co/google/gemma-4-E2B-it-qat-q4_0-gguf/resolve/main/$fileName');
+  static final url = Uri.parse(
+    'https://huggingface.co/google/gemma-4-E2B-it-qat-q4_0-gguf/resolve/main/$fileName',
+  );
   static late Directory baseDir;
 
   static File get modelFile => File('${baseDir.path}/Models/$fileName');
   static File get _partFile => File('${modelFile.path}.part');
-  static bool get isInstalled => modelFile.existsSync() && modelFile.lengthSync() == approximateBytes;
+  static bool get isInstalled =>
+      modelFile.existsSync() && modelFile.lengthSync() == approximateBytes;
   static int get modelBytes => isInstalled ? modelFile.lengthSync() : 0;
 
   /// llama.cpp is built into the Android app (arm64). iOS falls back to the demo engine for now.
@@ -110,9 +117,13 @@ class ModelManager {
       final req = http.Request('GET', url);
       if (have > 0) req.headers['range'] = 'bytes=$have-';
       final res = await client.send(req);
-      if (res.statusCode != 200 && res.statusCode != 206) throw HttpException('HTTP ${res.statusCode}');
+      if (res.statusCode != 200 && res.statusCode != 206) {
+        throw HttpException('HTTP ${res.statusCode}');
+      }
       final resumed = res.statusCode == 206;
-      final sink = _partFile.openWrite(mode: resumed ? FileMode.append : FileMode.write);
+      final sink = _partFile.openWrite(
+        mode: resumed ? FileMode.append : FileMode.write,
+      );
       var got = resumed ? have : 0;
       try {
         await for (final chunk in res.stream) {
@@ -124,7 +135,9 @@ class ModelManager {
       } finally {
         await sink.close();
       }
-      if (_partFile.lengthSync() != approximateBytes) throw const FileSystemException('size mismatch');
+      if (_partFile.lengthSync() != approximateBytes) {
+        throw const FileSystemException('size mismatch');
+      }
       _partFile.renameSync(modelFile.path);
     } finally {
       client.close();
@@ -147,14 +160,25 @@ class LocalLlama {
 
   static Future<String> complete(String prompt, int maxTokens) async {
     try {
-      final out = await _channel.invokeMethod<String>(
-          'complete', {'path': ModelManager.modelFile.path, 'prompt': prompt, 'maxTokens': maxTokens, 'nCtx': 4096});
+      final out = await _channel.invokeMethod<String>('complete', {
+        'path': ModelManager.modelFile.path,
+        'prompt': prompt,
+        'maxTokens': maxTokens,
+        'nCtx': 4096,
+      });
       return out ?? '';
     } on PlatformException catch (e) {
-      throw LLMError(LLMErrorKind.unavailable,
-          detail: e.code == 'too_long' ? tr('가사가 길어 온디바이스 모델이 한 번에 처리하지 못했어요.') : tr('온디바이스 모델을 실행하지 못했어요: {0}', [e.message]));
+      throw LLMError(
+        LLMErrorKind.unavailable,
+        detail: e.code == 'too_long'
+            ? tr('가사가 길어 온디바이스 모델이 한 번에 처리하지 못했어요.')
+            : tr('온디바이스 모델을 실행하지 못했어요: {0}', [e.message]),
+      );
     } on MissingPluginException {
-      throw LLMError(LLMErrorKind.unavailable, detail: tr('이 기기에서는 온디바이스 모델을 아직 쓸 수 없어요.'));
+      throw LLMError(
+        LLMErrorKind.unavailable,
+        detail: tr('이 기기에서는 온디바이스 모델을 아직 쓸 수 없어요.'),
+      );
     }
   }
 
@@ -188,22 +212,42 @@ class EngineConfig {
 }
 
 class EngineFactory {
-  static TranslationEngine make(EngineKind kind, String? apiKey, [EngineConfig config = const EngineConfig()]) => switch (kind) {
-        EngineKind.claude => ClaudeEngine(apiKey ?? '', model: config.claudeModel),
-        EngineKind.gemini => GeminiEngine(apiKey ?? ''),
-        EngineKind.vinylo =>
-          VinyloServerEngine(config.vinyloURL, apiKey ?? '', model: config.vinyloModel.isEmpty ? null : config.vinyloModel),
-        EngineKind.gateway => GatewayEngine(config.gatewayURL, apiKey ?? '', config.gatewayModel),
-        // Without the downloaded model there is no on-device engine; nothing is faked.
-        EngineKind.onDevice => ModelManager.isSupported && ModelManager.isInstalled
-            ? LocalLlamaEngine(LocalLlama.complete, modelName: ModelManager.modelName)
-            : const UnavailableEngine(EngineKind.onDevice, '온디바이스 모델을 먼저 내려받아 주세요. 마이페이지 → 번역 엔진에서 받을 수 있어요.'),
-      };
+  static TranslationEngine make(
+    EngineKind kind,
+    String? apiKey, [
+    EngineConfig config = const EngineConfig(),
+  ]) => switch (kind) {
+    EngineKind.claude => ClaudeEngine(apiKey ?? '', model: config.claudeModel),
+    EngineKind.gemini => GeminiEngine(apiKey ?? ''),
+    EngineKind.vinylo => VinyloServerEngine(
+      config.vinyloURL,
+      apiKey ?? '',
+      model: config.vinyloModel.isEmpty ? null : config.vinyloModel,
+    ),
+    EngineKind.gateway => GatewayEngine(
+      config.gatewayURL,
+      apiKey ?? '',
+      config.gatewayModel,
+    ),
+    // Without the downloaded model there is no on-device engine; nothing is faked.
+    EngineKind.onDevice =>
+      ModelManager.isSupported && ModelManager.isInstalled
+          ? LocalLlamaEngine(
+              LocalLlama.complete,
+              modelName: ModelManager.modelName,
+            )
+          : const UnavailableEngine(
+              EngineKind.onDevice,
+              '온디바이스 모델을 먼저 내려받아 주세요. 마이페이지 → 번역 엔진에서 받을 수 있어요.',
+            ),
+  };
 
   /// The engine currently answering for a choice, for the badge (SIR-3).
   static String label(EngineKind kind) {
     if (kind != EngineKind.onDevice) return kind.badgeLabel;
-    return ModelManager.isSupported && ModelManager.isInstalled ? 'On-device · Gemma 4' : 'On-device · 모델 필요';
+    return ModelManager.isSupported && ModelManager.isInstalled
+        ? 'On-device · Gemma 4'
+        : 'On-device · 모델 필요';
   }
 }
 
@@ -219,7 +263,9 @@ class Links {
     if (!_ready) {
       _ready = true;
       _channel.setMethodCallHandler((call) async {
-        if (call.method == 'link') _controller.add(Uri.parse(call.arguments as String));
+        if (call.method == 'link') {
+          _controller.add(Uri.parse(call.arguments as String));
+        }
       });
       _channel.invokeMethod<String>('initialLink').then((v) {
         if (v != null) _controller.add(Uri.parse(v));
@@ -228,7 +274,8 @@ class Links {
     return _controller.stream;
   }
 
-  static Future<void> open(Uri url) => _channel.invokeMethod('open', {'url': url.toString()});
+  static Future<void> open(Uri url) =>
+      _channel.invokeMethod('open', {'url': url.toString()});
 }
 
 // ─────────────────────────────── Spotify (SIR-5) ───────────────────────────────
@@ -237,9 +284,15 @@ class Links {
 /// The client ID is passed at build time: `--dart-define=SPOTIFY_CLIENT_ID=…`.
 class SpotifyAuth {
   static const clientID = String.fromEnvironment('SPOTIFY_CLIENT_ID');
+
+  /// iOS has no way to follow or control Spotify without Spotify's own SDK, so there the app supports
+  /// Apple Music only and shows no Spotify screens. Android follows Spotify through media sessions.
+  static bool get available => !Platform.isIOS;
   static const redirect = 'vinylo://spotify-callback';
+
   /// Playback plus library reads (playlists, saved albums, liked songs) for the Spotify browser.
-  static const scopes = 'user-read-currently-playing user-read-playback-state user-modify-playback-state '
+  static const scopes =
+      'user-read-currently-playing user-read-playback-state user-modify-playback-state '
       'playlist-read-private playlist-read-collaborative user-library-read';
 
   final SecureStore store;
@@ -249,42 +302,52 @@ class SpotifyAuth {
   String? _access;
   DateTime _expiry = DateTime(0);
 
-  SpotifyAuth(this.store, {http.Client? client}) : client = client ?? http.Client();
+  SpotifyAuth(this.store, {http.Client? client})
+    : client = client ?? http.Client();
 
   bool get isConfigured => clientID.isNotEmpty;
-  bool get hasToken => (store.value(SecretKey.spotifyRefreshToken) ?? '').isNotEmpty;
+  bool get hasToken =>
+      (store.value(SecretKey.spotifyRefreshToken) ?? '').isNotEmpty;
 
   /// False for logins made before the library scopes were added (0.3.1 and older); those must
   /// log in again before playlists and albums can be read.
   bool get hasLibraryScopes {
     final granted = (store.value(SecretKey.spotifyScope) ?? '').split(' ');
-    return granted.contains('playlist-read-private') && granted.contains('user-library-read');
+    return granted.contains('playlist-read-private') &&
+        granted.contains('user-library-read');
   }
 
-  static String _b64(List<int> bytes) => base64Url.encode(bytes).replaceAll('=', '');
+  static String _b64(List<int> bytes) =>
+      base64Url.encode(bytes).replaceAll('=', '');
 
   Future<void> startLogin() async {
     final rnd = Random.secure();
     _verifier = _b64(List.generate(64, (_) => rnd.nextInt(256)));
     _state = _b64(List.generate(16, (_) => rnd.nextInt(256)));
     final challenge = _b64(sha256.convert(ascii.encode(_verifier!)).bytes);
-    await Links.open(Uri.https('accounts.spotify.com', '/authorize', {
-      'client_id': clientID,
-      'response_type': 'code',
-      'redirect_uri': redirect,
-      'code_challenge_method': 'S256',
-      'code_challenge': challenge,
-      'state': _state,
-      'scope': scopes,
-    }));
+    await Links.open(
+      Uri.https('accounts.spotify.com', '/authorize', {
+        'client_id': clientID,
+        'response_type': 'code',
+        'redirect_uri': redirect,
+        'code_challenge_method': 'S256',
+        'code_challenge': challenge,
+        'state': _state,
+        'scope': scopes,
+      }),
+    );
   }
 
   /// Handles `vinylo://spotify-callback?code=…&state=…`. Returns false if it is not a Spotify redirect.
   Future<bool> finishLogin(Uri uri) async {
     if (uri.scheme != 'vinylo' || uri.host != 'spotify-callback') return false;
     final err = uri.queryParameters['error'];
-    if (err != null) throw SpotifyException(tr('Spotify 로그인이 취소됐어요 ({0}).', [err]));
-    if (uri.queryParameters['state'] != _state || _verifier == null) throw SpotifyException(tr('Spotify 로그인을 다시 시도해 주세요.'));
+    if (err != null) {
+      throw SpotifyException(tr('Spotify 로그인이 취소됐어요 ({0}).', [err]));
+    }
+    if (uri.queryParameters['state'] != _state || _verifier == null) {
+      throw SpotifyException(tr('Spotify 로그인을 다시 시도해 주세요.'));
+    }
     await _token({
       'grant_type': 'authorization_code',
       'code': uri.queryParameters['code'] ?? '',
@@ -296,13 +359,21 @@ class SpotifyAuth {
   }
 
   Future<void> _token(Map<String, String> form) async {
-    final r = await client.post(Uri.parse('https://accounts.spotify.com/api/token'), body: form).timeout(const Duration(seconds: 20));
-    if (r.statusCode != 200) throw SpotifyException(tr('Spotify 인증에 실패했어요 ({0}).', [r.statusCode]));
+    final r = await client
+        .post(Uri.parse('https://accounts.spotify.com/api/token'), body: form)
+        .timeout(const Duration(seconds: 20));
+    if (r.statusCode != 200) {
+      throw SpotifyException(tr('Spotify 인증에 실패했어요 ({0}).', [r.statusCode]));
+    }
     final j = jsonDecode(r.body) as Map;
     _access = j['access_token'] as String;
-    _expiry = DateTime.now().add(Duration(seconds: ((j['expires_in'] as num?) ?? 3600).toInt() - 60));
+    _expiry = DateTime.now().add(
+      Duration(seconds: ((j['expires_in'] as num?) ?? 3600).toInt() - 60),
+    );
     final refresh = j['refresh_token'] as String?;
-    if (refresh != null) await store.set(refresh, SecretKey.spotifyRefreshToken);
+    if (refresh != null) {
+      await store.set(refresh, SecretKey.spotifyRefreshToken);
+    }
     final scope = j['scope'] as String?;
     if (scope != null) await store.set(scope, SecretKey.spotifyScope);
   }
@@ -310,8 +381,14 @@ class SpotifyAuth {
   Future<String> accessToken() async {
     if (_access == null || DateTime.now().isAfter(_expiry)) {
       final refresh = store.value(SecretKey.spotifyRefreshToken);
-      if (refresh == null || refresh.isEmpty) throw SpotifyException(tr('Spotify가 연결되어 있지 않아요.'));
-      await _token({'grant_type': 'refresh_token', 'refresh_token': refresh, 'client_id': clientID});
+      if (refresh == null || refresh.isEmpty) {
+        throw SpotifyException(tr('Spotify가 연결되어 있지 않아요.'));
+      }
+      await _token({
+        'grant_type': 'refresh_token',
+        'refresh_token': refresh,
+        'client_id': clientID,
+      });
     }
     return _access!;
   }
@@ -362,7 +439,10 @@ class SpotifyRemote {
   /// Throws [SpotifyRemoteException] with Spotify's reason when it cannot connect.
   static Future<void> connect() async {
     try {
-      await _channel.invokeMethod('connect', {'clientId': SpotifyAuth.clientID, 'redirectUri': SpotifyAuth.redirect});
+      await _channel.invokeMethod('connect', {
+        'clientId': SpotifyAuth.clientID,
+        'redirectUri': SpotifyAuth.redirect,
+      });
     } on PlatformException catch (e) {
       throw SpotifyRemoteException(e.code, e.message);
     }
@@ -392,14 +472,15 @@ class SpotifyRemoteException implements Exception {
 
   /// What to tell the user, by the SDK's exception name.
   String get userMessage => switch (code) {
-        'CouldNotFindSpotifyApp' => tr('Spotify 앱이 설치되어 있지 않아요.'),
-        'NotLoggedInException' => tr('Spotify 앱에 로그인해 주세요.'),
-        'UserNotAuthorizedException' || 'AuthenticationFailedException' =>
-          tr('Spotify가 이 앱을 아직 허용하지 않았어요. 대시보드에 패키지 이름과 SHA-1을 등록했는지 확인해 주세요.'),
-        'UnsupportedFeatureVersionException' => tr('Spotify 앱을 최신 버전으로 업데이트해 주세요.'),
-        'OfflineModeException' => tr('Spotify가 오프라인 모드예요.'),
-        _ => tr('Spotify 앱과 연결하지 못했어요 ({0}).', [code]),
-      };
+    'CouldNotFindSpotifyApp' => tr('Spotify 앱이 설치되어 있지 않아요.'),
+    'NotLoggedInException' => tr('Spotify 앱에 로그인해 주세요.'),
+    'UserNotAuthorizedException' || 'AuthenticationFailedException' => tr(
+      'Spotify가 이 앱을 아직 허용하지 않았어요. 대시보드에 패키지 이름과 SHA-1을 등록했는지 확인해 주세요.',
+    ),
+    'UnsupportedFeatureVersionException' => tr('Spotify 앱을 최신 버전으로 업데이트해 주세요.'),
+    'OfflineModeException' => tr('Spotify가 오프라인 모드예요.'),
+    _ => tr('Spotify 앱과 연결하지 못했어요 ({0}).', [code]),
+  };
 
   @override
   String toString() => userMessage;
@@ -434,7 +515,9 @@ class SpotifyRemoteSource implements NowPlayingSource {
         ),
         position: ((e['positionMs'] as num?) ?? 0) / 1000,
         isPlaying: e['paused'] != true,
-        rate: (e['speed'] as num?)?.toDouble() == 0 ? 1 : ((e['speed'] as num?)?.toDouble() ?? 1),
+        rate: (e['speed'] as num?)?.toDouble() == 0
+            ? 1
+            : ((e['speed'] as num?)?.toDouble() ?? 1),
         trackID: uri.startsWith('spotify:track:') ? uri.split(':').last : null,
       );
       _last = snap;
@@ -457,17 +540,26 @@ class SpotifyRemoteSource implements NowPlayingSource {
     try {
       await SpotifyRemote.call(method, args);
     } on SpotifyRemoteException catch (e) {
-      onError(e.code.contains('Restriction') || (e.detail ?? '').contains('PREMIUM') ? SourceError.premiumRequired.userMessage : e.userMessage);
+      onError(
+        e.code.contains('Restriction') || (e.detail ?? '').contains('PREMIUM')
+            ? SourceError.premiumRequired.userMessage
+            : e.userMessage,
+      );
     }
   }
 
   /// Starts a track at [position] seconds. Returns a message when Spotify refuses.
   Future<String?> playTrack(String uri, {double position = 0}) async {
     try {
-      await SpotifyRemote.call('play', {'uri': uri, 'positionMs': (position * 1000).round()});
+      await SpotifyRemote.call('play', {
+        'uri': uri,
+        'positionMs': (position * 1000).round(),
+      });
       return null;
     } on SpotifyRemoteException catch (e) {
-      return (e.detail ?? '').toUpperCase().contains('PREMIUM') ? SourceError.premiumRequired.userMessage : e.userMessage;
+      return (e.detail ?? '').toUpperCase().contains('PREMIUM')
+          ? SourceError.premiumRequired.userMessage
+          : e.userMessage;
     }
   }
 
@@ -480,7 +572,8 @@ class SpotifyRemoteSource implements NowPlayingSource {
   @override
   Future<void> previous() => _do('previous');
   @override
-  Future<void> seek(double position) => _do('seek', {'positionMs': (position * 1000).round()});
+  Future<void> seek(double position) =>
+      _do('seek', {'positionMs': (position * 1000).round()});
 
   @override
   void dispose() {
@@ -503,7 +596,8 @@ class MusicApp {
   /// may warn about sideloaded APKs that declare a notification listener. Tests set this to run
   /// the Dart path on the desktop.
   static bool? debugSupported;
-  static bool get supported => debugSupported ?? (Platform.isAndroid || Platform.isIOS);
+  static bool get supported =>
+      debugSupported ?? (Platform.isAndroid || Platform.isIOS);
 
   static Future<bool> hasAccess() async {
     if (!supported) return false;
@@ -514,9 +608,11 @@ class MusicApp {
     }
   }
 
-  static Future<void> openAccessSettings() => _channel.invokeMethod('openAccessSettings');
+  static Future<void> openAccessSettings() =>
+      _channel.invokeMethod('openAccessSettings');
 
-  static Future<void> call(String method, [Map<String, Object?>? args]) => _channel.invokeMethod(method, args);
+  static Future<void> call(String method, [Map<String, Object?>? args]) =>
+      _channel.invokeMethod(method, args);
 
   /// The playing track's album art as JPEG, or null.
   static Future<Uint8List?> artwork() async {
@@ -558,10 +654,15 @@ class MusicAppSource implements NowPlayingSource {
           title: '${e['title'] ?? ''}',
           artist: '${e['artist'] ?? ''}',
           album: e['album'] as String?,
-          duration: switch ((e['durationMs'] as num?) ?? 0) { > 0 && final ms => ms / 1000, _ => null },
+          duration: switch ((e['durationMs'] as num?) ?? 0) {
+            > 0 && final ms => ms / 1000,
+            _ => null,
+          },
         ),
         position: ((e['positionMs'] as num?) ?? 0) / 1000,
-        reportedAt: DateTime.now().subtract(Duration(milliseconds: ((e['ageMs'] as num?) ?? 0).toInt())),
+        reportedAt: DateTime.now().subtract(
+          Duration(milliseconds: ((e['ageMs'] as num?) ?? 0).toInt()),
+        ),
         isPlaying: e['playing'] == true,
         // A paused session reports speed 0; the sync engine only advances while playing anyway.
         rate: speed <= 0 ? 1 : speed,
@@ -578,11 +679,11 @@ class MusicAppSource implements NowPlayingSource {
   SourceID get id => SourceID.musicApp;
   @override
   Set<SourceCapability> get capabilities => {
-        SourceCapability.read,
-        SourceCapability.playPause,
-        if (_canSkip) SourceCapability.skip,
-        if (_canSeek) SourceCapability.seek,
-      };
+    SourceCapability.read,
+    SourceCapability.playPause,
+    if (_canSkip) SourceCapability.skip,
+    if (_canSeek) SourceCapability.seek,
+  };
 
   @override
   Stream<PlaybackSnapshot> get snapshots async* {
@@ -600,7 +701,10 @@ class MusicAppSource implements NowPlayingSource {
   /// Returns a message when no app can.
   Future<String?> playFromSearch(String query, {String? package}) async {
     try {
-      await MusicApp.call('playFromSearch', {'query': query, 'package': package});
+      await MusicApp.call('playFromSearch', {
+        'query': query,
+        'package': package,
+      });
       return null;
     } on PlatformException {
       return tr('이 곡을 틀어 줄 음악 앱을 찾지 못했어요. 음악 앱에서 직접 재생해 주세요.');
@@ -616,7 +720,8 @@ class MusicAppSource implements NowPlayingSource {
   @override
   Future<void> previous() => _do('previous');
   @override
-  Future<void> seek(double position) => _do('seek', {'positionMs': (position * 1000).round()});
+  Future<void> seek(double position) =>
+      _do('seek', {'positionMs': (position * 1000).round()});
 
   @override
   void dispose() {
@@ -646,7 +751,11 @@ class CoverStore {
   }
 
   /// Writes a generated cover. The name changes each time so cached images are not reused.
-  static String? saveBytes(Uint8List bytes, String songID, {String ext = 'png'}) {
+  static String? saveBytes(
+    Uint8List bytes,
+    String songID, {
+    String ext = 'png',
+  }) {
     try {
       dir.createSync(recursive: true);
       final name = '$songID-${DateTime.now().millisecondsSinceEpoch}.$ext';
@@ -701,12 +810,16 @@ class StorageMeter {
 /// the collection file, so the export format shared with iOS does not change.
 class QuizProgress {
   final SharedPreferences prefs;
-  static const _levelsKey = 'quiz.levels.v1', _daysKey = 'quiz.days.v1', _scoresKey = 'quiz.scores.v1';
+  static const _levelsKey = 'quiz.levels.v1',
+      _daysKey = 'quiz.days.v1',
+      _scoresKey = 'quiz.scores.v1';
   QuizProgress(this.prefs);
 
   Map<String, int> get _levels {
     try {
-      return Map<String, int>.from(jsonDecode(prefs.getString(_levelsKey) ?? '{}') as Map);
+      return Map<String, int>.from(
+        jsonDecode(prefs.getString(_levelsKey) ?? '{}') as Map,
+      );
     } catch (_) {
       return {};
     }
@@ -720,7 +833,10 @@ class QuizProgress {
       final raw = jsonDecode(prefs.getString(_scoresKey) ?? '{}') as Map;
       return {
         for (final e in raw.entries)
-          '${e.key}': {for (final l in (e.value as Map).entries) int.parse('${l.key}'): (l.value as num).toInt()},
+          '${e.key}': {
+            for (final l in (e.value as Map).entries)
+              int.parse('${l.key}'): (l.value as num).toInt(),
+          },
       };
     } catch (_) {
       return {};
@@ -732,7 +848,13 @@ class QuizProgress {
     final m = scores;
     final best = max(score, m[songID]?[level] ?? 0);
     (m[songID] ??= {})[level] = best;
-    prefs.setString(_scoresKey, jsonEncode({for (final e in m.entries) e.key: {for (final l in e.value.entries) '${l.key}': l.value}}));
+    prefs.setString(
+      _scoresKey,
+      jsonEncode({
+        for (final e in m.entries)
+          e.key: {for (final l in e.value.entries) '${l.key}': l.value},
+      }),
+    );
     return best;
   }
 
@@ -747,7 +869,13 @@ class QuizProgress {
     final m = _levels..remove(songID);
     prefs.setString(_levelsKey, jsonEncode(m));
     final s = scores..remove(songID);
-    prefs.setString(_scoresKey, jsonEncode({for (final e in s.entries) e.key: {for (final l in e.value.entries) '${l.key}': l.value}}));
+    prefs.setString(
+      _scoresKey,
+      jsonEncode({
+        for (final e in s.entries)
+          e.key: {for (final l in e.value.entries) '${l.key}': l.value},
+      }),
+    );
   }
 
   /// Days with at least one finished quiz, as yyyy-mm-dd.
@@ -756,7 +884,10 @@ class QuizProgress {
   static String dayKey(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-  void markToday() => prefs.setStringList(_daysKey, (days..add(dayKey(DateTime.now()))).toList()..sort());
+  void markToday() => prefs.setStringList(
+    _daysKey,
+    (days..add(dayKey(DateTime.now()))).toList()..sort(),
+  );
 
   /// Consecutive days up to today (or yesterday, so the streak survives until the day ends).
   int get streak {
@@ -787,6 +918,8 @@ class Haptics {
 String? mediaTrackID(String? package, String? mediaId) {
   final id = mediaId?.trim() ?? '';
   if (id.isEmpty) return null;
-  if (id.startsWith('spotify:track:')) return id.substring('spotify:track:'.length);
+  if (id.startsWith('spotify:track:')) {
+    return id.substring('spotify:track:'.length);
+  }
   return '${package ?? ''}|$id';
 }

@@ -90,7 +90,8 @@ class CoverPainter extends CustomPainter {
           ..color = Colors.white.withValues(alpha: 0.22));
 
     final text = label;
-    if (text != null && text.isNotEmpty) {
+    // Under ~72 px the title is unreadable and only clutters the sleeve (list rows, calendar).
+    if (text != null && text.isNotEmpty && w >= 72) {
       final tp = TextPainter(
         text: TextSpan(
           text: text,

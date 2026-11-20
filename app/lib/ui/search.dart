@@ -4,6 +4,7 @@ import 'package:flutter/material.dart' hide Route;
 
 import '../app/app_model.dart';
 import '../app/i18n.dart';
+import '../app/platform_services.dart';
 import '../app/theme.dart';
 import '../core/lyrics.dart';
 import '../core/models.dart';
@@ -29,6 +30,7 @@ enum _SearchTab { search, spotify }
 
 class _SearchViewState extends State<SearchView> {
   late final _query = TextEditingController(text: widget.initialQuery);
+
   /// Local matches only (the demo song in demo mode); the shipped app has none.
   List<LyricsCandidate> results = [];
   _SearchTab tab = _SearchTab.search;
@@ -66,7 +68,9 @@ class _SearchViewState extends State<SearchView> {
   Future<void> _search() async {
     final q = _query.text.trim();
     final gen = ++_generation;
-    final found = q.isEmpty ? <LyricsCandidate>[] : await context.readModel.lyricsProvider.search(q);
+    final found = q.isEmpty
+        ? <LyricsCandidate>[]
+        : await context.readModel.lyricsProvider.search(q);
     if (!mounted || gen != _generation) return;
     setState(() => results = SearchResults.dedupe(found));
   }
@@ -74,7 +78,9 @@ class _SearchViewState extends State<SearchView> {
   /// The known track (recommendation, now playing) when the query is still the one it came with.
   TrackKey? get _hintForQuery {
     final hint = widget.hint;
-    return hint != null && _query.text.trim() == widget.initialQuery.trim() ? hint : null;
+    return hint != null && _query.text.trim() == widget.initialQuery.trim()
+        ? hint
+        : null;
   }
 
   /// Opens the in-app browser on the LRC search, then the add screen with what was taken there.
@@ -88,7 +94,13 @@ class _SearchViewState extends State<SearchView> {
       ..album = hint?.album
       ..duration = hint?.duration;
     final model = context.readModel;
-    draft.lyrics = (await openLyricsBrowser(context, title: draft.title, artist: draft.artist))?.trim() ?? '';
+    draft.lyrics =
+        (await openLyricsBrowser(
+          context,
+          title: draft.title,
+          artist: draft.artist,
+        ))?.trim() ??
+        '';
     if (!mounted) return;
     model.push(AddRoute(draft));
   }
@@ -102,7 +114,9 @@ class _SearchViewState extends State<SearchView> {
   Widget build(BuildContext context) {
     final model = context.model;
     final t = context.theme;
-    final spotifyLinked = model.settings.connectedSources.contains(SourceID.spotify);
+    final spotifyLinked = model.settings.connectedSources.contains(
+      SourceID.spotify,
+    );
     return Scaffold(
       appBar: AppBar(title: Text(tr('노래 추가')), centerTitle: true),
       body: SafeArea(
@@ -110,15 +124,24 @@ class _SearchViewState extends State<SearchView> {
         child: Column(
           children: [
             // Users without Spotify see no empty playlist tab (FG-02 note).
-            if (spotifyLinked || model.spotifyAuth.isConfigured)
+            if (SpotifyAuth.available &&
+                (spotifyLinked || model.spotifyAuth.isConfigured))
               Padding(
                 padding: const EdgeInsets.fromLTRB(0, 0, 0, 4),
-                child: Row(children: [_tabButton(tr('검색'), _SearchTab.search), _tabButton(tr('내 플레이리스트'), _SearchTab.spotify)]),
+                child: Row(
+                  children: [
+                    _tabButton(tr('검색'), _SearchTab.search),
+                    _tabButton(tr('내 플레이리스트'), _SearchTab.spotify),
+                  ],
+                ),
               ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
               child: Container(
-                decoration: BoxDecoration(color: t.surface, borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(
+                  color: t.surface,
+                  borderRadius: BorderRadius.circular(10),
+                ),
                 child: TextField(
                   controller: _query,
                   autocorrect: false,
@@ -135,7 +158,11 @@ class _SearchViewState extends State<SearchView> {
                         ? null
                         : IconButton(
                             tooltip: tr('지우기'),
-                            icon: Icon(Icons.cancel, color: t.textTertiary, size: 20),
+                            icon: Icon(
+                              Icons.cancel,
+                              color: t.textTertiary,
+                              size: 20,
+                            ),
                             onPressed: () => _setQuery(''),
                           ),
                     contentPadding: const EdgeInsets.symmetric(vertical: 14),
@@ -144,14 +171,25 @@ class _SearchViewState extends State<SearchView> {
               ),
             ),
             Expanded(child: _content()),
-            Divider(height: 1, thickness: 1, color: t.stroke.withValues(alpha: 0.6)),
+            Divider(
+              height: 1,
+              thickness: 1,
+              color: t.stroke.withValues(alpha: 0.6),
+            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
               child: Column(
                 children: [
-                  Text(tr('원하는 노래가 없다면, 직접 추가할 수 있어요.'), style: TextStyle(fontSize: 13, color: t.textTertiary)),
+                  Text(
+                    tr('원하는 노래가 없다면, 직접 추가할 수 있어요.'),
+                    style: TextStyle(fontSize: 13, color: t.textTertiary),
+                  ),
                   const SizedBox(height: 10),
-                  SecondaryButton(tr('직접 추가하기'), icon: Icons.add, onPressed: () => model.push(AddRoute(AddSongDraft()))),
+                  SecondaryButton(
+                    tr('직접 추가하기'),
+                    icon: Icons.add,
+                    onPressed: () => model.push(AddRoute(AddSongDraft())),
+                  ),
                 ],
               ),
             ),
@@ -174,7 +212,10 @@ class _SearchViewState extends State<SearchView> {
               title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 14, color: on ? t.textPrimary : t.textSecondary),
+              style: TextStyle(
+                fontSize: 14,
+                color: on ? t.textPrimary : t.textSecondary,
+              ),
             ),
             const SizedBox(height: 8),
             Container(height: on ? 2 : 1, color: on ? t.textPrimary : t.stroke),
@@ -191,7 +232,10 @@ class _SearchViewState extends State<SearchView> {
       // Suggestions before searching: easy songs, popular songs and more.
       return SingleChildScrollView(
         padding: const EdgeInsets.only(top: 8, bottom: 20),
-        child: CuratedShelvesView(shelves: model.shelves, onSelect: (e, _) => _setQuery('${e.title} ${e.artist}')),
+        child: CuratedShelvesView(
+          shelves: model.shelves,
+          onSelect: (e, _) => _setQuery('${e.title} ${e.artist}'),
+        ),
       );
     }
     return ListView(
@@ -207,7 +251,10 @@ class _SearchViewState extends State<SearchView> {
   Widget _webSearchRow() {
     final t = context.theme;
     final hint = _hintForQuery;
-    final q = LyricsWebSearch.query(title: hint?.title ?? _query.text, artist: hint?.artist ?? '');
+    final q = LyricsWebSearch.query(
+      title: hint?.title ?? _query.text,
+      artist: hint?.artist ?? '',
+    );
     return InkWell(
       onTap: _searchWeb,
       child: Padding(
@@ -217,7 +264,10 @@ class _SearchViewState extends State<SearchView> {
             Container(
               width: 48,
               height: 48,
-              decoration: BoxDecoration(color: t.surface, borderRadius: BorderRadius.circular(4)),
+              decoration: BoxDecoration(
+                color: t.surface,
+                borderRadius: BorderRadius.circular(4),
+              ),
               child: Icon(Icons.travel_explore, color: t.textPrimary),
             ),
             const SizedBox(width: 12),
@@ -227,7 +277,11 @@ class _SearchViewState extends State<SearchView> {
                 children: [
                   Text(
                     tr('인터넷에서 가사 찾기'),
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: t.textPrimary),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: t.textPrimary,
+                    ),
                   ),
                   const SizedBox(height: 3),
                   Text(
@@ -255,7 +309,14 @@ class _SearchViewState extends State<SearchView> {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         child: Row(
           children: [
-            SizedBox(width: 48, height: 48, child: GeneratedCover(seed: '${c.artistName}—${c.trackName}', radius: 4)),
+            SizedBox(
+              width: 48,
+              height: 48,
+              child: GeneratedCover(
+                seed: '${c.artistName}—${c.trackName}',
+                radius: 4,
+              ),
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(

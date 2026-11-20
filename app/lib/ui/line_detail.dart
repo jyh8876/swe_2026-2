@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../app/app_model.dart';
 import '../app/i18n.dart';
@@ -150,7 +151,10 @@ class _LineDetailViewState extends State<LineDetailView> {
               ),
               IconButton(
                 tooltip: saved ? tr('담은 문장에서 빼기') : tr('문장 담기'),
-                onPressed: () => model.toggleSaved(widget.songID, widget.index),
+                onPressed: () {
+                  HapticFeedback.lightImpact();
+                  model.toggleSaved(widget.songID, widget.index);
+                },
                 icon: Icon(saved ? Icons.star_rounded : Icons.star_outline_rounded, size: 28, color: saved ? t.brand : t.textTertiary),
               ),
             ]),
@@ -191,7 +195,10 @@ class _LineDetailViewState extends State<LineDetailView> {
             const SizedBox(width: 10),
             Expanded(
               child: FilledButton.icon(
-                onPressed: () => model.toggleSaved(widget.songID, widget.index),
+                onPressed: () {
+                  HapticFeedback.lightImpact();
+                  model.toggleSaved(widget.songID, widget.index);
+                },
                 style: FilledButton.styleFrom(
                   backgroundColor: t.accent,
                   foregroundColor: t.onAccent,

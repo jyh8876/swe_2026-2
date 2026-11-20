@@ -488,7 +488,6 @@ class _PinterestSheetState extends State<_PinterestSheet> {
             ),
           ),
           const SizedBox(height: 10),
-          Text(tr('핀터레스트에서 마음에 드는 이미지를 저장한 뒤, 아래 버튼으로 갤러리에서 골라 주세요.'), style: TextStyle(fontSize: 13, color: t.textSecondary)),
           const SizedBox(height: 16),
           PrimaryButton(tr('핀터레스트 열기'), icon: Icons.north_east_rounded, onPressed: _open),
           const SizedBox(height: 8),

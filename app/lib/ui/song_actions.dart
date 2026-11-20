@@ -85,7 +85,6 @@ class _EditSongViewState extends State<EditSongView> {
           onChanged: (_) => setState(() {}),
         ),
         const SizedBox(height: 6),
-        Text(tr('바꾼 줄만 다시 번역해요. 바꾼 줄에 담아 둔 문장은 빠져요.'), style: TextStyle(fontSize: 12, color: t.textTertiary)),
         const SizedBox(height: 18),
         SectionLabel(tr('번역 언어')),
         const SizedBox(height: 8),

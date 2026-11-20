@@ -643,3 +643,61 @@ class LanguageSelectField extends StatelessWidget {
     );
   }
 }
+
+/// Korean wraps between any two syllables, which strands one character on the last line.
+/// A word joiner between the syllables of each word keeps words whole and breaks only at spaces.
+String keepWords(String s) => s.split(' ').map((w) => w.runes.map(String.fromCharCode).join('\u2060')).join(' ');
+
+/// Fades and lifts its child in once, [index] steps after the screen opens (list rows).
+class FadeIn extends StatelessWidget {
+  final Widget child;
+  final int index;
+  const FadeIn({super.key, required this.child, this.index = 0});
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.of(context).disableAnimations) return child;
+    final i = index.clamp(0, 8);
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: 260 + i * 50),
+      curve: Curves.easeOutCubic,
+      builder: (_, v, c) => Opacity(opacity: v, child: Transform.translate(offset: Offset(0, (1 - v) * 10), child: c)),
+      child: child,
+    );
+  }
+}
+
+/// Gives a tappable a small press-down response, so taps feel acknowledged.
+class Pressable extends StatefulWidget {
+  final Widget child;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  final double scale;
+  const Pressable({super.key, required this.child, this.onTap, this.onLongPress, this.scale = 0.97});
+  @override
+  State<Pressable> createState() => _PressableState();
+}
+
+class _PressableState extends State<Pressable> {
+  bool _down = false;
+  void _set(bool v) {
+    if (_down != v) setState(() => _down = v);
+  }
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => _set(true),
+        onTapUp: (_) => _set(false),
+        onTapCancel: () => _set(false),
+        onTap: widget.onTap,
+        onLongPress: widget.onLongPress,
+        child: AnimatedScale(
+          scale: _down && !MediaQuery.of(context).disableAnimations ? widget.scale : 1,
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+          child: widget.child,
+        ),
+      );
+}

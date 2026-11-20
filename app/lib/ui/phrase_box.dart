@@ -5,6 +5,7 @@ import '../app/i18n.dart';
 import '../app/theme.dart';
 import '../core/models.dart';
 import 'components.dart';
+import 'covers.dart';
 import 'line_detail.dart';
 
 /// FG-08 Phrase box (RQ-12, RQ-13 statistics). No share/export in MVP (FG-08 note).
@@ -48,11 +49,15 @@ class _PhraseBoxViewState extends State<PhraseBoxView> {
         const SizedBox(height: 16),
         if (phrases.isEmpty)
           Padding(
-            padding: const EdgeInsets.only(top: 24),
-            child: Text(tr('가사 옆의 ☆를 눌러 마음에 드는 문장을 모아보세요.'), style: TextStyle(fontSize: 15, color: t.textSecondary)),
+            padding: const EdgeInsets.only(top: 56),
+            child: Column(children: [
+              Icon(Icons.star_outline_rounded, size: 40, color: t.textTertiary),
+              const SizedBox(height: 12),
+              Text(keepWords(tr('가사 옆의 ☆를 눌러 마음에 드는 문장을 모아보세요.')), textAlign: TextAlign.center, style: TextStyle(fontSize: 15, height: 1.45, color: t.textSecondary)),
+            ]),
           )
         else
-          for (final p in phrases) Padding(padding: const EdgeInsets.only(bottom: 12), child: _card(model, p)),
+          for (final (i, p) in phrases.indexed) FadeIn(index: i, child: Padding(padding: const EdgeInsets.only(bottom: 12), child: _card(model, p))),
       ]),
     );
   }
@@ -60,15 +65,17 @@ class _PhraseBoxViewState extends State<PhraseBoxView> {
   Widget _statsCard(AppModel model) {
     final t = context.theme;
     final s = model.collection.stats;
-    Widget stat(String v, String label) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(v, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: t.textPrimary)),
-          const SizedBox(height: 2),
-          Text(label, style: TextStyle(fontSize: 12, color: t.textSecondary)),
-        ]);
+    Widget stat(String v, String label) => Expanded(
+          child: Column(children: [
+            Text(v, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: t.textPrimary)),
+            const SizedBox(height: 2),
+            Text(label, style: TextStyle(fontSize: 12, color: t.textSecondary)),
+          ]),
+        );
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(color: t.surface, borderRadius: BorderRadius.circular(12)),
-      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+      child: Row(children: [
         stat('${s.phrases}', tr('저장한 문장')),
         stat('${s.songs}', tr('곡')),
         stat('${s.conquered}', tr('정복')),
@@ -114,7 +121,7 @@ class _PhraseBoxViewState extends State<PhraseBoxView> {
           const SizedBox(height: 8),
           Divider(color: t.stroke, height: 1),
           Row(children: [
-            SizedBox(width: 22, height: 22, child: CoverArt(path: song?.coverPath, radius: 3)),
+            SizedBox(width: 22, height: 22, child: song?.coverPath != null ? CoverArt(path: song!.coverPath, radius: 3) : GeneratedCover(seed: p.songID, radius: 3)),
             const SizedBox(width: 8),
             Expanded(
               child: Text('${song?.title ?? tr('삭제된 노래')} · ${song?.artist ?? ''}',

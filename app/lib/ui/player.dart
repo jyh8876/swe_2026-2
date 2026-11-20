@@ -600,7 +600,10 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
           child: IconButton(
             padding: EdgeInsets.zero,
             tooltip: saved ? tr('저장한 문장에서 빼기') : tr('문장 저장'),
-            onPressed: () => model.toggleSaved(id, line.index),
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              model.toggleSaved(id, line.index);
+            },
             icon: AnimatedSwitcher(
               duration: const Duration(milliseconds: 180),
               transitionBuilder: (c, a) => ScaleTransition(scale: a, child: c),
