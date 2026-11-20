@@ -222,7 +222,7 @@ class _MainTabViewState extends State<MainTabView>
 
   /// The tab bar, with the mini player docked on top of it as one full-width box.
   Widget _tabBar(AppModel model, AppTheme t, bool showMini) {
-    Widget tab(AppTab tab, IconData icon, IconData selectedIcon, String label) {
+    Widget tab(AppTab tab, IconData icon, IconData selectedIcon, String label, String caption) {
       final on = model.selectedTab == tab;
       return Expanded(
         child: Semantics(
@@ -244,13 +244,24 @@ class _MainTabViewState extends State<MainTabView>
             },
             child: SizedBox(
               height: 58,
-              // Figma (light home): icons only, filled when selected; the label stays for screen readers.
-              child: Center(
-                child: Icon(
-                  on ? selectedIcon : icon,
-                  size: 26,
-                  color: on ? t.textPrimary : t.textTertiary,
-                ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(on ? selectedIcon : icon, size: 24, color: on ? t.textPrimary : t.textTertiary),
+                  const SizedBox(height: 2),
+                  // The spoken label above can be longer; this one is the short visible caption.
+                  Text(
+                    caption,
+                    maxLines: 1,
+                    style: TextStyle(
+                      fontSize: 10,
+                      height: 1.2,
+                      fontWeight: on ? FontWeight.w700 : FontWeight.w500,
+                      letterSpacing: -0.1,
+                      color: on ? t.textPrimary : t.textTertiary,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -280,11 +291,13 @@ class _MainTabViewState extends State<MainTabView>
                   Icons.home_outlined,
                   Icons.home_rounded,
                   tr('라이브러리'),
+                  tr('홈'),
                 ),
                 tab(
                   AppTab.quiz,
                   Icons.quiz_outlined,
                   Icons.quiz_rounded,
+                  tr('퀴즈'),
                   tr('퀴즈'),
                 ),
                 tab(
@@ -292,11 +305,13 @@ class _MainTabViewState extends State<MainTabView>
                   Icons.star_outline_rounded,
                   Icons.star_rounded,
                   tr('문장 저장함'),
+                  tr('즐겨찾기'),
                 ),
                 tab(
                   AppTab.my,
                   Icons.person_outline_rounded,
                   Icons.person_rounded,
+                  tr('마이페이지'),
                   tr('마이페이지'),
                 ),
               ],

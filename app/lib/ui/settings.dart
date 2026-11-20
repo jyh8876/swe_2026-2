@@ -63,6 +63,7 @@ class _SettingsViewState extends State<SettingsView> {
         padding: const EdgeInsets.only(bottom: 32),
         children: [
           if (widget.asTab) ...[
+            if (model.account case final a?) _ProfileHeader(account: a),
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: MyStats(),
@@ -987,5 +988,86 @@ class _APIKeyEntryViewState extends State<APIKeyEntryView> {
         });
       }
     }
+  }
+}
+
+/// Who is signed in, at the top of the My page: initial in a circle, the name, and the e-mail or
+/// the sign-in provider underneath. Apple may share no name (only the first time) and may hide the
+/// e-mail, so the name falls back to the e-mail's local part, then to the provider.
+class _ProfileHeader extends StatelessWidget {
+  final AccountInfo account;
+  const _ProfileHeader({required this.account});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    final provider = account.isApple ? tr('Apple 계정') : tr('Google 계정');
+    final email = (account.email ?? '').trim();
+    final name = (account.name ?? '').trim();
+    final title = name.isNotEmpty
+        ? name
+        : (email.isNotEmpty ? email.split('@').first : provider);
+    final sub = title == provider
+        ? null
+        : (email.isNotEmpty && email != title ? email : provider);
+    final initial = title == provider
+        ? null
+        : String.fromCharCode(title.runes.first).toUpperCase();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+      child: Row(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: t.surfaceRaised,
+              shape: BoxShape.circle,
+              border: Border.all(color: t.stroke.withValues(alpha: 0.6)),
+            ),
+            child: initial == null
+                ? Icon(Icons.person_rounded, color: t.textSecondary)
+                : Text(
+                    initial,
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: t.textPrimary,
+                    ),
+                  ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.3,
+                    color: t.textPrimary,
+                  ),
+                ),
+                if (sub != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      sub,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 13, color: t.textSecondary),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math';
-import 'dart:ui';
 
 import 'package:flutter/material.dart' hide Route;
 import 'package:flutter/services.dart';
@@ -33,7 +32,7 @@ enum _Mode { linkedSynced, linkedPlain, studyOnly }
 
 class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
   late ListenSession _session = ListenSession(songID: widget.songID);
-  late final AnimationController _drift = AnimationController(vsync: this, duration: const Duration(seconds: 28));
+  late final AnimationController _drift = AnimationController(vsync: this, duration: const Duration(seconds: 240));
   late final Timer _ticker;
   late AppModel _model;
   final _scroll = ScrollController();
@@ -80,7 +79,7 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
     if (MediaQuery.of(context).disableAnimations) {
       _drift.stop();
     } else if (!_drift.isAnimating) {
-      _drift.repeat(reverse: true);
+      _drift.repeat();
     }
   }
 
@@ -776,42 +775,18 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
   }
 }
 
-/// Slowly drifting, blurred grey blobs behind the player (prototype `pDrift`).
-class _Backdrop extends AnimatedWidget {
-  const _Backdrop({required Animation<double> animation}) : super(listenable: animation);
+/// Soft lights that glide slowly across the dark player. No blur filter and no bounce: each light
+/// follows its own long closed path (periods of 80, 120 and 240 s share one 240 s loop), so the
+/// background moves continuously, never jumps, and costs only three gradient fills per frame.
+class _Backdrop extends StatelessWidget {
+  final Animation<double> animation;
+  const _Backdrop({required this.animation});
 
   @override
   Widget build(BuildContext context) {
-    final v = Curves.easeInOut.transform((listenable as Animation<double>).value);
-    Widget blob(Alignment a, Color c, double r) => Align(
-          alignment: a,
-          child: Container(
-            width: r,
-            height: r,
-            decoration: BoxDecoration(shape: BoxShape.circle, gradient: RadialGradient(colors: [c, c.withValues(alpha: 0)])),
-          ),
-        );
-    return ClipRect(
+    return RepaintBoundary(
       child: Stack(fit: StackFit.expand, children: [
-        const ColoredBox(color: PlayerPalette.background),
-        Transform.translate(
-          offset: Offset(lerpDouble(-12, 12, v)!, lerpDouble(-16, 16, v)!),
-          child: Transform.rotate(
-            angle: v * 8 * pi / 180,
-            child: Transform.scale(
-              scale: 1 + 0.06 * v,
-              child: ImageFiltered(
-                imageFilter: ImageFilter.blur(sigmaX: 48, sigmaY: 48),
-                child: Stack(fit: StackFit.expand, children: [
-                  blob(const Alignment(-0.64, -0.76), const Color(0xFF5E5E5E), 420),
-                  blob(const Alignment(0.64, -0.56), const Color(0xFF464646), 340),
-                  blob(const Alignment(0.56, 0.64), const Color(0xFF333333), 460),
-                  blob(const Alignment(-0.7, 0.56), const Color(0xFF3B3B3B), 380),
-                ]),
-              ),
-            ),
-          ),
-        ),
+        CustomPaint(painter: _LightsPainter(animation)),
         const DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x1F0A0C10), Color(0x6B0A0C10)]),
@@ -820,6 +795,32 @@ class _Backdrop extends AnimatedWidget {
       ]),
     );
   }
+}
+
+class _LightsPainter extends CustomPainter {
+  final Animation<double> t;
+  _LightsPainter(this.t) : super(repaint: t);
+
+  static const _tau = 2 * pi;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = PlayerPalette.background);
+    final w = size.width, h = size.height, v = t.value;
+    void light(double fx, double fy, double radius, Color c) {
+      final center = Offset(fx * w, fy * h);
+      final r = radius * w;
+      final shader = RadialGradient(colors: [c, c.withValues(alpha: c.a * 0.45), c.withValues(alpha: 0)], stops: const [0, 0.5, 1]).createShader(Rect.fromCircle(center: center, radius: r));
+      canvas.drawCircle(center, r, Paint()..shader = shader);
+    }
+
+    light(0.5 + 0.38 * sin(_tau * 3 * v), 0.30 + 0.22 * cos(_tau * 2 * v + 1.0), 0.95, const Color(0x2EFFFFFF));
+    light(0.5 + 0.42 * cos(_tau * 2 * v + 2.0), 0.66 + 0.24 * sin(_tau * 3 * v + 0.5), 1.0, const Color(0x2A8A8F99));
+    light(0.5 + 0.30 * sin(_tau * v + 4.0), 0.50 + 0.34 * cos(_tau * 2 * v + 3.0), 0.8, PlayerPalette.brand.withValues(alpha: 0.10));
+  }
+
+  @override
+  bool shouldRepaint(_LightsPainter old) => old.t != t;
 }
 
 /// Seek bar from the prototype: saved lines are mint segments with star pins; while scrubbing

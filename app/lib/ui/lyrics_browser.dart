@@ -1,4 +1,7 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart' hide Route;
+import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../app/i18n.dart';
@@ -29,9 +32,13 @@ class _LyricsBrowserViewState extends State<LyricsBrowserView> {
   late final _bar = TextEditingController(text: widget.query);
   final _barFocus = FocusNode();
   int _progress = 0;
+  bool _canBack = false, _canForward = false;
 
   /// The text the user has selected on the page, reported by the page as it changes.
   String _selection = '';
+
+  static const _safariUserAgent =
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
 
   /// Reports the selection to the app whenever it changes (no page content is read otherwise).
   static const _watchSelection = """
@@ -52,6 +59,9 @@ class _LyricsBrowserViewState extends State<LyricsBrowserView> {
     super.initState();
     _web = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      // WKWebView's own user agent lacks the Version/Safari tokens, so sites with a bot check (Lyricsify)
+      // fail to verify; a regular mobile Safari agent passes.
+      ..setUserAgent(Platform.isIOS ? _safariUserAgent : null)
       ..addJavaScriptChannel('VinyloSelection', onMessageReceived: (m) {
         if (mounted && m.message != _selection) setState(() => _selection = m.message);
       })
@@ -63,8 +73,12 @@ class _LyricsBrowserViewState extends State<LyricsBrowserView> {
           if (!mounted) return;
           setState(() => _selection = '');
           if (!_barFocus.hasFocus) _bar.text = _display(url);
+          _syncHistory();
         },
-        onPageFinished: (_) => _web.runJavaScript(_watchSelection).catchError((_) {}),
+        onPageFinished: (_) {
+          _web.runJavaScript(_watchSelection).catchError((_) {});
+          _syncHistory();
+        },
         onNavigationRequest: _onNavigation,
       ))
       ..loadRequest(LyricsWebSearch.urlFor(widget.query));
@@ -75,6 +89,17 @@ class _LyricsBrowserViewState extends State<LyricsBrowserView> {
     _bar.dispose();
     _barFocus.dispose();
     super.dispose();
+  }
+
+  /// Whether the page history has somewhere to go, for the arrow buttons.
+  Future<void> _syncHistory() async {
+    final back = await _web.canGoBack(), forward = await _web.canGoForward();
+    if (mounted && (back != _canBack || forward != _canForward)) {
+      setState(() {
+        _canBack = back;
+        _canForward = forward;
+      });
+    }
   }
 
   /// The search words on a search page, the address elsewhere.
@@ -181,21 +206,28 @@ class _LyricsBrowserViewState extends State<LyricsBrowserView> {
             child: Container(
               decoration: BoxDecoration(color: t.background, border: Border(top: BorderSide(color: t.stroke))),
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: FilledButton.icon(
-                  onPressed: n == 0 ? null : _take,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: t.accent,
-                    foregroundColor: t.onAccent,
-                    disabledBackgroundColor: t.surfaceRaised,
-                    disabledForegroundColor: t.textTertiary,
+              child: Row(children: [
+                IconButton(tooltip: tr('이전 페이지'), onPressed: _canBack ? _web.goBack : null, icon: const Icon(Icons.chevron_left_rounded, size: 28)),
+                IconButton(tooltip: tr('다음 페이지'), onPressed: _canForward ? _web.goForward : null, icon: const Icon(Icons.chevron_right_rounded, size: 28)),
+                IconButton(tooltip: tr('새로고침'), onPressed: _web.reload, icon: const Icon(Icons.refresh_rounded, size: 22)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SizedBox(
+                    height: 48,
+                    child: FilledButton.icon(
+                      onPressed: n == 0 ? null : _take,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: t.accent,
+                        foregroundColor: t.onAccent,
+                        disabledBackgroundColor: t.surfaceRaised,
+                        disabledForegroundColor: t.textTertiary,
+                      ),
+                      icon: const Icon(Icons.download_rounded, size: 18),
+                      label: Text(n == 0 ? tr('가사를 선택해 주세요') : tr('선택한 가사 가져오기 ({0}줄)', ['$n'])),
+                    ),
                   ),
-                  icon: const Icon(Icons.download_rounded, size: 18),
-                  label: Text(n == 0 ? tr('가사를 선택해 주세요') : tr('선택한 가사 가져오기 ({0}줄)', ['$n'])),
                 ),
-              ),
+              ]),
             ),
           ),
         ]),
@@ -370,5 +402,119 @@ class _LyricsGuideViewState extends State<LyricsGuideView> with SingleTickerProv
         ]),
       ),
     ]);
+  }
+}
+
+
+/// "곡명 – 아티스트  가사 검색 ↗": opens the in-app lyrics search for the song being typed.
+class LyricsSearchChip extends StatelessWidget {
+  final String title, artist;
+  final VoidCallback onTap;
+  const LyricsSearchChip({super.key, required this.title, required this.artist, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Material(
+        color: t.surface,
+        shape: const StadiumBorder(),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 9, 12, 9),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Flexible(
+                child: Text(
+                  [title.trim(), artist.trim()].where((x) => x.isNotEmpty).join(' – '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 14, color: t.textPrimary),
+                ),
+              ),
+              Text(' ${tr('가사 검색')}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: t.textPrimary)),
+              const SizedBox(width: 6),
+              Icon(Icons.north_east, size: 16, color: t.textPrimary),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+/// "클립보드에서 붙여넣기": appears once the clipboard holds text (after copying lyrics in the browser
+/// or another app) and puts it into [controller]. `hasStrings` does not trigger iOS's paste prompt;
+/// the text itself is read only when the button is tapped.
+class ClipboardPasteChip extends StatefulWidget {
+  final TextEditingController controller;
+  final VoidCallback? onPasted;
+  const ClipboardPasteChip({super.key, required this.controller, this.onPasted});
+  @override
+  State<ClipboardPasteChip> createState() => _ClipboardPasteChipState();
+}
+
+class _ClipboardPasteChipState extends State<ClipboardPasteChip> with WidgetsBindingObserver {
+  bool _has = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _check();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _check();
+  }
+
+  Future<void> _check() async {
+    bool has;
+    try {
+      has = await Clipboard.hasStrings();
+    } catch (_) {
+      has = false;
+    }
+    if (mounted && has != _has) setState(() => _has = has);
+  }
+
+  Future<void> _paste() async {
+    final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text?.trim() ?? '';
+    if (!mounted || text.isEmpty) return;
+    widget.controller.text = PageLyrics.lrc(text) ?? text;
+    widget.onPasted?.call();
+    _check();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_has) return const SizedBox();
+    final t = context.theme;
+    return Material(
+      color: t.surface,
+      shape: const StadiumBorder(),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: _paste,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 9, 14, 9),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.content_paste_rounded, size: 16, color: t.textPrimary),
+            const SizedBox(width: 6),
+            Text(tr('클립보드에서 붙여넣기'), style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: t.textPrimary)),
+          ]),
+        ),
+      ),
+    );
   }
 }

@@ -3,8 +3,10 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:lyrics_translator/app/account.dart';
 import 'package:lyrics_translator/app/app_model.dart';
 import 'package:lyrics_translator/core/collection.dart';
 import 'package:lyrics_translator/core/llm.dart';
@@ -35,7 +37,7 @@ void main() {
     await binding.takeScreenshot(name);
   }
 
-  Future<AppModel> model(bool onboarded, {bool songs = false}) async {
+  Future<AppModel> model(bool onboarded, {bool songs = false, AccountInfo? account, bool shelves = false}) async {
     SharedPreferences.setMockInitialValues({});
     final snap = CollectionSnapshot();
     if (songs) {
@@ -56,9 +58,12 @@ void main() {
     }
     return AppModel.test(
         collection: snap,
-        settings: AppSettings()..hasOnboarded = onboarded,
+        settings: AppSettings()
+          ..hasOnboarded = onboarded
+          ..account = account,
         prefs: await SharedPreferences.getInstance(),
-        baseDir: Directory.systemTemp.createTempSync());
+        baseDir: Directory.systemTemp.createTempSync(),
+        shelves: shelves ? CuratedShelf.parseFile(await rootBundle.loadString('assets/curated_shelves.json')) : const []);
   }
 
   testWidgets('onboarding', (t) async {
@@ -74,10 +79,17 @@ void main() {
     await t.pumpWidget(LyricsTranslatorApp(model: m));
     await wait(t, 1000);
     await shot(t, '10_home_carousel');
+    await t.tap(find.bySemanticsLabel('겹쳐서 보기'));
+    await wait(t, 1200);
+    await shot(t, '19_stack');
+    await t.tap(find.bySemanticsLabel('앨범 슬라이드로 보기'));
+    await wait(t, 800);
     final id = m.collection.songsNewestFirst.last.id;
     m.push(PlayerRoute(id));
     await wait(t, 1500);
     await shot(t, '11_player');
+    await wait(t, 6000);
+    await shot(t, '11_player_later');
     m.setPath([]);
     await wait(t, 800);
     m.openAdd();
@@ -107,5 +119,23 @@ void main() {
     await t.longPressAt(const Offset(195, 330));
     await wait(t, 900);
     await shot(t, '18_song_menu');
+  });
+
+  testWidgets('home keeps the shelves under the library', (t) async {
+    final m = await model(true, songs: true, shelves: true);
+    await t.pumpWidget(LyricsTranslatorApp(model: m));
+    await wait(t, 800);
+    await t.drag(find.byType(Scrollable).first, const Offset(0, -700));
+    await wait(t, 600);
+    await shot(t, '21_home_shelves');
+  });
+
+  testWidgets('my page signed in', (t) async {
+    final m = await model(true, songs: true, account: const AccountInfo(provider: 'google', id: '1', email: 'sample@example.com', name: '홍길동'));
+    await t.pumpWidget(LyricsTranslatorApp(model: m));
+    await wait(t, 800);
+    m.selectTab(AppTab.my);
+    await wait(t, 1000);
+    await shot(t, '20_my_signed_in');
   });
 }

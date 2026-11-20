@@ -8,6 +8,7 @@ import '../app/i18n.dart';
 import '../app/platform_services.dart';
 import '../app/theme.dart';
 import '../core/collection.dart';
+import '../core/lyrics.dart' show TrackMatcher;
 import '../core/models.dart';
 import 'components.dart';
 import 'song_actions.dart';
@@ -350,6 +351,7 @@ class _CarouselPage extends StatelessWidget {
       SizedBox(height: 452, child: _Carousel(songs: songs, initial: initial, onFocus: onFocus)),
       const SpotifyShelf(),
       RecommendRow(title: tr('이런 노래는 어때요?'), entries: model.recommendations(after: songs.first)),
+      const MoreShelves(),
     ]);
   }
 }
@@ -721,8 +723,9 @@ class _StackViewState extends State<_StackView> with SingleTickerProviderStateMi
 // ─────────────── LP slab ───────────────
 
 /// Thickness of a cover plate, as a share of the cover size: a thin sheet of clear plastic
-/// (feedback 11/19 #12: half the earlier 4.5 %, no dark rim, so it never reads as two records).
-const _slabDepth = 0.0225;
+/// (11/19 #12 halved it to 2.25 %, now 8.5 % at the user's request for a clearly thick stack; the edge
+/// stays clear plastic with no dark rim so it still never reads as two records).
+const _slabDepth = 0.085;
 
 /// The back face and the four edges of an LP of [card] size, standing behind a cover drawn at
 /// z = 0 (further away is +z, as in the stack's camera). Painted before the cover.
@@ -742,9 +745,9 @@ List<Widget> _slab(double card) {
       );
   // Clear plastic edge: brighter where the light catches the faces, see-through in the middle.
   final side = LinearGradient(
-      colors: [Colors.white.withValues(alpha: 0.55), Colors.white.withValues(alpha: 0.14), Colors.white.withValues(alpha: 0.55)]);
+      colors: [Colors.white.withValues(alpha: 0.7), Colors.white.withValues(alpha: 0.22), Colors.white.withValues(alpha: 0.7)]);
   return [
-    face(card, card, Matrix4.identity()..translateByDouble(0.0, 0.0, th, 1.0), g: LinearGradient(colors: [Colors.white.withValues(alpha: 0.10), Colors.white.withValues(alpha: 0.04)])),
+    face(card, card, Matrix4.identity()..translateByDouble(0.0, 0.0, th, 1.0), g: LinearGradient(colors: [Colors.white.withValues(alpha: 0.16), Colors.white.withValues(alpha: 0.07)])),
     face(th, card, Matrix4.identity()..translateByDouble(card / 2, 0.0, th / 2, 1.0)..rotateY(pi / 2), g: side),
     face(th, card, Matrix4.identity()..translateByDouble(-card / 2, 0.0, th / 2, 1.0)..rotateY(pi / 2), g: side),
     face(card, th, Matrix4.identity()..translateByDouble(0.0, -card / 2, th / 2, 1.0)..rotateX(pi / 2), g: side.withRotation()),
@@ -813,6 +816,7 @@ class _Grid extends StatelessWidget {
         ),
         const SliverToBoxAdapter(child: SpotifyShelf()),
         SliverToBoxAdapter(child: RecommendRow(title: tr('이런 노래는 어때요?'), entries: model.recommendations(after: songs.first))),
+        const SliverToBoxAdapter(child: MoreShelves()),
         SliverToBoxAdapter(child: SizedBox(height: _bottomPad(model))),
       ]);
     });
@@ -880,6 +884,7 @@ class _List extends StatelessWidget {
         ),
       const SpotifyShelf(),
       RecommendRow(title: tr('이런 노래는 어때요?'), entries: model.recommendations(after: songs.first)),
+      const MoreShelves(),
     ]);
   }
 }
@@ -1144,6 +1149,34 @@ class CuratedShelvesView extends StatelessWidget {
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         for (final shelf in shelves) RecommendRow(title: shelf.title, subtitle: shelf.subtitle, entries: shelf.songs, onSelect: (e) => onSelect(e, shelf)),
       ]);
+}
+
+/// The curated shelves of the empty home ("가사를 바로 불러올 수 있는 곡", slang songs and so on), kept
+/// under the library after the first song is added, minus what is already in the collection.
+class MoreShelves extends StatelessWidget {
+  const MoreShelves({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final model = context.model;
+    final t = context.theme;
+    bool owned(ShelfEntry e) =>
+        model.collection.songs.any((s) => TrackMatcher.matches(TrackKey(title: s.title, artist: s.artist), TrackKey(title: e.title, artist: e.artist)));
+    final rows = <Widget>[
+      for (final shelf in model.shelves)
+        if (shelf.songs.where((e) => !owned(e)).toList() case final left when left.isNotEmpty)
+          RecommendRow(title: shelf.title, subtitle: shelf.subtitle, entries: left, onSelect: (e) => model.openAdd(e.trackKey)),
+    ];
+    if (rows.isEmpty) return const SizedBox();
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const SizedBox(height: 12),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+        child: Text(tr('가사를 바로 불러올 수 있는 곡'), style: TextStyle(fontSize: 13, color: t.textTertiary)),
+      ),
+      ...rows,
+    ]);
+  }
 }
 
 /// Suggests following the user's music app (any app, through notification access).

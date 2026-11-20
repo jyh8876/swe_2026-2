@@ -73,36 +73,11 @@ class _AddSongViewState extends State<AddSongView> {
               ),
             ),
           ]),
-          if (_title.text.trim().isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Material(
-                color: t.surface,
-                shape: const StadiumBorder(),
-                child: InkWell(
-                  customBorder: const StadiumBorder(),
-                  onTap: _searchWeb,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 9, 12, 9),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Flexible(
-                        child: Text(
-                          [_title.text.trim(), _artist.text.trim()].where((x) => x.isNotEmpty).join(' – '),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 14, color: t.textPrimary),
-                        ),
-                      ),
-                      Text(' ${tr('가사 검색')}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: t.textPrimary)),
-                      const SizedBox(width: 6),
-                      Icon(Icons.north_east, size: 16, color: t.textPrimary),
-                    ]),
-                  ),
-                ),
-              ),
-            ),
-          ],
+          const SizedBox(height: 6),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            if (_title.text.trim().isNotEmpty) LyricsSearchChip(title: _title.text, artist: _artist.text, onTap: _searchWeb),
+            ClipboardPasteChip(controller: _lyrics, onPasted: () => setState(() {})),
+          ]),
           const SizedBox(height: 8),
           OutlinedField(
             controller: _lyrics,

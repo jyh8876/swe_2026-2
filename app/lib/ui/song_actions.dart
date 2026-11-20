@@ -10,6 +10,7 @@ import '../core/models.dart';
 import '../core/quiz.dart';
 import 'components.dart';
 import 'cover_select.dart';
+import 'lyrics_browser.dart';
 import 'quiz.dart';
 
 // Song settings shared by the library's long-press menu and the player's menu (Notion 11/19):
@@ -57,6 +58,13 @@ class _EditSongViewState extends State<EditSongView> {
     super.dispose();
   }
 
+  /// In-app browser on the LRC search; what the user takes there replaces the lyrics field.
+  Future<void> _searchWeb() async {
+    final lyrics = await openLyricsBrowser(context, title: _title.text, artist: _artist.text);
+    if (!mounted || lyrics == null || lyrics.trim().isEmpty) return;
+    setState(() => _lyrics.text = lyrics.trim());
+  }
+
   bool get _valid => _title.text.trim().isNotEmpty && _artist.text.trim().isNotEmpty && _lyrics.text.trim().isNotEmpty;
 
   @override
@@ -75,6 +83,11 @@ class _EditSongViewState extends State<EditSongView> {
         OutlinedField(controller: _artist, hint: tr('아티스트'), onChanged: (_) => setState(() {})),
         const SizedBox(height: 18),
         SectionLabel(tr('가사')),
+        const SizedBox(height: 6),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          if (_title.text.trim().isNotEmpty) LyricsSearchChip(title: _title.text, artist: _artist.text, onTap: _searchWeb),
+          ClipboardPasteChip(controller: _lyrics, onPasted: () => setState(() {})),
+        ]),
         const SizedBox(height: 8),
         OutlinedField(
           controller: _lyrics,

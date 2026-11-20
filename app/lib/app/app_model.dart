@@ -281,7 +281,7 @@ class AppModel extends ChangeNotifier {
 
   /// In-memory model for widget tests and screenshots.
   @visibleForTesting
-  factory AppModel.test({required CollectionSnapshot collection, required AppSettings settings, required SharedPreferences prefs, required Directory baseDir}) {
+  factory AppModel.test({required CollectionSnapshot collection, required AppSettings settings, required SharedPreferences prefs, required Directory baseDir, List<CuratedShelf> shelves = const []}) {
     ModelManager.baseDir = baseDir;
     CoverStore.dir = Directory('${baseDir.path}/Covers');
     return AppModel._(
@@ -291,7 +291,7 @@ class AppModel extends ChangeNotifier {
       prefs: prefs,
       settings: settings,
       collection: collection,
-      shelves: const [],
+      shelves: shelves,
       baseDir: baseDir,
     );
   }
