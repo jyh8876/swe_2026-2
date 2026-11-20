@@ -179,11 +179,11 @@ final class AppleMusicBridge: NSObject, FlutterStreamHandler {
     case .song(let song):
       track.artist = song.artistName
       track.album = song.albumTitle
-      track.duration = song.duration ?? 0
+      track.duration = Self.finite(song.duration ?? 0, fallback: 0)
       track.id = song.id.rawValue
     case .musicVideo(let video):
       track.artist = video.artistName
-      track.duration = video.duration ?? 0
+      track.duration = Self.finite(video.duration ?? 0, fallback: 0)
       track.id = video.id.rawValue
     default:
       break
@@ -192,7 +192,7 @@ final class AppleMusicBridge: NSObject, FlutterStreamHandler {
       if track.title.isEmpty { track.title = item.title ?? "" }
       if track.artist.isEmpty { track.artist = item.artist ?? "" }
       if track.album == nil { track.album = item.albumTitle }
-      if track.duration <= 0 { track.duration = item.playbackDuration }
+      if track.duration <= 0 { track.duration = Self.finite(item.playbackDuration, fallback: 0) }
     }
     return track.title.isEmpty ? nil : track
   }
@@ -210,8 +210,10 @@ final class AppleMusicBridge: NSObject, FlutterStreamHandler {
     wasIdle = false
     let status = player.state.playbackStatus
     let playing = status == .playing || status == .seekingForward || status == .seekingBackward
-    let rate = Double(player.state.playbackRate)
-    let position = player.playbackTime
+    // MusicKit reports NaN or infinity for time and rate when the queue has an entry that is not
+    // playing yet; converting those to Int traps and kills the app, so everything is made finite first.
+    let rate = Self.finite(Double(player.state.playbackRate), fallback: 1)
+    let position = max(0, Self.finite(player.playbackTime, fallback: 0))
     let now = Date()
 
     // Where the playhead should be if nothing changed since the last report.
@@ -230,8 +232,8 @@ final class AppleMusicBridge: NSObject, FlutterStreamHandler {
       "title": track.title,
       "artist": track.artist,
       "album": track.album as Any,
-      "durationMs": Int(track.duration * 1000),
-      "positionMs": Int(position * 1000),
+      "durationMs": Self.millis(track.duration),
+      "positionMs": Self.millis(position),
       "ageMs": 0,
       "playing": playing,
       "speed": playing ? (rate > 0 ? rate : 1) : 0,
@@ -243,6 +245,17 @@ final class AppleMusicBridge: NSObject, FlutterStreamHandler {
   }
 
   private var lastRate = 1.0
+
+  /// [value] when it is a usable number, otherwise [fallback] (NaN and ±infinity are not).
+  private static func finite(_ value: Double, fallback: Double) -> Double {
+    value.isFinite ? value : fallback
+  }
+
+  /// Seconds as whole milliseconds; never traps (0 for NaN, infinity or out-of-range values).
+  private static func millis(_ seconds: Double) -> Int {
+    guard seconds.isFinite, seconds > 0, seconds < 31_536_000 else { return 0 }
+    return Int(seconds * 1000)
+  }
 
   /// The playing track's cover as JPEG. MusicKit artwork URLs are not plain http for library
   /// songs, so this reads it from the media library item.
