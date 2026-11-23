@@ -469,7 +469,7 @@ class _SettingsViewState extends State<SettingsView> {
           _section(null, [
             _row(
               tr('버전'),
-              trailing: '0.18.2 (${Platform.isIOS ? 'iOS' : 'Android'})',
+              trailing: '0.18.3 (${Platform.isIOS ? 'iOS' : 'Android'})',
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
