@@ -300,6 +300,7 @@ class AppModel extends ChangeNotifier {
     final support = await getApplicationSupportDirectory();
     final base = Directory('${support.path}/LyricsTranslator');
     ModelManager.baseDir = base;
+    ModelManager.removeLegacy();
     CoverStore.dir = Directory('${base.path}/Covers');
     final repo = JSONFileRepository(File('${base.path}/collection.json'));
     final prefs = await SharedPreferences.getInstance();

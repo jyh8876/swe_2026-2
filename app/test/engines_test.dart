@@ -1,6 +1,6 @@
-import 'dart:async';
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -106,46 +106,55 @@ void main() {
     expect(await GatewayEngine.listModels('https://gw/v1', 'k', client: client), ['chat-a', 'plain']);
   });
 
-  test('On-device llama: Gemma prompt, chunks of 8, copies lines already in the target', () async {
-    final prompts = <String>[];
-    Future<String> runner(String prompt, int maxTokens) async {
-      prompts.add(prompt);
-      final user = prompt.split('<|turn>user\n')[1].split('<turn|>')[0];
-      final entries = [
-        for (final row in user.split('\n'))
-          {'i': int.parse(row.split('\t')[0]), 't': '번역 ${row.split('\t')[0]}'}
-      ];
-      return jsonEncode({'lines': entries});
+  test('On-device: the prompt is the exact text the model was trained on (p2)', () {
+    // sha256 of translation_system(code) in the training code (lyrics-distill data/p2/prompts_p2.py).
+    const trained = {
+      'ko': '156531e1d2fc42f0f01f848549f9fdfbb9448ff881efc2d1a1b5b83d4f561571',
+      'zh': '6bd05a3dd5f1046de6334f14662de9c8ed99784d52ae8007961d48f1d1a6bf87',
+      'en': 'ed7e4ce6000030b2dfdef30d7b902a06699768852efe35214bcbb635069465a2',
+      'ja': '8bb5f5aac5c6da53cedd3181c9b62981a5f8283a81c3196a64a73c05b1f5de32',
+    };
+    for (final lang in [Language.korean, Language.chinese, Language.english, Language.japanese]) {
+      expect('${sha256.convert(utf8.encode(LocalLlamaEngine.translationSystem(lang)))}', trained[lang.code],
+          reason: lang.code);
+    }
+  });
+
+  test('On-device: one request per line, answer opened in the prompt, copies skipped', () async {
+    final calls = <(String, int)>[];
+    Future<String> runner(String prompt, int maxTokens, {int closeDepth = 0}) async {
+      calls.add((prompt, closeDepth));
+      final i = prompt.split('<|turn>user\n')[1].split('\t')[0];
+      return '$i,"t":"번역 $i","r":"읽기 $i"}';
     }
 
     final engine = LocalLlamaEngine(runner);
-    final lines = sampleLines([...List.generate(10, (i) => 'Window light number $i'), '이미 한국어 문장이에요']);
+    final lines = sampleLines(['Window light', '이미 한국어 문장이에요', 'Second window']);
     final results = await engine.translateSong(lines, ko).toList();
-    expect(prompts.length, 2);
-    expect(prompts.first, startsWith('<|turn>system\n'));
-    expect(prompts.first, endsWith('<|turn>model\n'));
-    expect(results.whereType<Translated>().length, 10);
-    expect(results.whereType<Copied>().single.index, 10);
+    expect(calls.length, 2);
+    for (final (prompt, depth) in calls) {
+      expect(prompt, endsWith('<|turn>model\n{"lines":[{"i":'));
+      expect(depth, 1);
+    }
+    // Everything up to the user turn is shared, so llama.cpp reuses it from the KV cache.
+    final head = calls[0].$1.substring(0, calls[0].$1.indexOf('<|turn>user'));
+    expect(calls[1].$1, startsWith(head));
+    expect(calls[1].$1, contains('<|turn>user\n2\tSecond window<turn|>'));
+    expect(results[0], isA<Translated>().having((t) => t.text, 'text', '번역 0').having((t) => t.reading, 'reading', '읽기 0'));
+    expect(results[1], isA<Copied>());
+    expect((results[2] as Translated).text, '번역 2');
   });
 
-  test('on-device: streamed lines are handed on before the chunk is finished', () async {
-    final gate = Completer<void>();
-    Stream<String> streamer(String prompt, int maxTokens) async* {
-      // The first entry, cut in the middle as tokens arrive.
-      yield '{"lines":[{"i":0,"t":"첫';
-      yield ' 줄"},';
-      await gate.future;
-      yield '{"i":1,"t":"둘째 줄"}]}';
+  test('On-device: a broken answer is asked again without the opened answer', () async {
+    final prompts = <String>[];
+    Future<String> runner(String prompt, int maxTokens, {int closeDepth = 0}) async {
+      prompts.add(prompt);
+      return prompts.length == 1 ? '0,"t":"' : '{"lines":[{"i":0,"t":"다시 한 번"}]}';
     }
 
-    final engine = LocalLlamaEngine((_, _) async => throw StateError('not used'), streamer: streamer);
-    final lines = sampleLines(['First line here', 'Second line here']);
-    final seen = <LineResult>[];
-    final done = engine.translateSong(lines, ko).forEach(seen.add);
-    await Future<void>.delayed(const Duration(milliseconds: 20));
-    expect(seen.whereType<Translated>().map((t) => t.text), ['첫 줄']);
-    gate.complete();
-    await done;
-    expect(seen.whereType<Translated>().map((t) => t.text), ['첫 줄', '둘째 줄']);
+    final results = await LocalLlamaEngine(runner).translateSong(sampleLines(['One more time']), ko).toList();
+    expect(prompts.length, 2);
+    expect(prompts[1], endsWith('<|turn>model\n'));
+    expect((results.single as Translated).text, '다시 한 번');
   });
 }

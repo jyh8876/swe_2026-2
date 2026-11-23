@@ -27,7 +27,7 @@ class MainActivity : FlutterActivity() {
         // Spotify (or any music app) through the system media sessions; needs notification access.
         mediaSessions = MediaSessionBridge(applicationContext, messenger)
 
-        // On-device llama.cpp (Gemma 4 E2B). All calls run on one background thread.
+        // On-device llama.cpp (vinylo-e2b-lyrics). All calls run on one background thread.
         val llama = MethodChannel(messenger, "vinylo/llama")
         llama.setMethodCallHandler { call, result ->
             when (call.method) {
@@ -43,9 +43,7 @@ class MainActivity : FlutterActivity() {
                     val prompt = call.argument<String>("prompt")!!
                     val maxTokens = call.argument<Int>("maxTokens") ?: 1024
                     val nCtx = call.argument<Int>("nCtx") ?: 4096
-                    // With a stream id, the text is also sent as it is generated ("partial"), so lines can
-                    // be shown one by one instead of after the whole chunk.
-                    val streamId = call.argument<Int>("streamId")
+                    val closeDepth = call.argument<Int>("closeDepth") ?: 0
                     llmThread.execute {
                         try {
                             if (!LlamaNative.loaded) throw IllegalStateException("llama.cpp is not available on this device")
@@ -56,21 +54,7 @@ class MainActivity : FlutterActivity() {
                                 loadedPath = path
                             }
                             val out = ByteArrayOutputStream()
-                            var sent = 0
-                            var lastSend = 0L
-                            val rc = LlamaNative.generate(prompt, maxTokens) {
-                                out.write(it)
-                                val now = System.currentTimeMillis()
-                                if (streamId != null && now - lastSend >= 200) {
-                                    lastSend = now
-                                    val text = utf8Prefix(out.toByteArray())
-                                    if (text.length > sent) {
-                                        val piece = text.substring(sent)
-                                        sent = text.length
-                                        runOnUiThread { llama.invokeMethod("partial", mapOf("id" to streamId, "text" to piece)) }
-                                    }
-                                }
-                            }
+                            val rc = LlamaNative.generate(prompt, maxTokens, closeDepth) { out.write(it) }
                             val text = out.toString(Charsets.UTF_8.name())
                             runOnUiThread {
                                 when {
@@ -118,24 +102,4 @@ class MainActivity : FlutterActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         intent.data?.let { uri -> links?.invokeMethod("link", uri.toString()) ?: run { pendingLink = uri.toString() } }
-    }
-
-    /** The bytes decoded as UTF-8 up to the last complete character (a token can end mid-character). */
-    private fun utf8Prefix(bytes: ByteArray): String {
-        var end = bytes.size
-        var back = 0
-        // Step back over continuation bytes (10xxxxxx) to the lead byte of the last character.
-        while (back < 4 && end - back - 1 >= 0 && (bytes[end - back - 1].toInt() and 0xC0) == 0x80) back++
-        if (end - back - 1 >= 0) {
-            val lead = bytes[end - back - 1].toInt() and 0xFF
-            val need = when {
-                lead >= 0xF0 -> 4
-                lead >= 0xE0 -> 3
-                lead >= 0xC0 -> 2
-                else -> 1
-            }
-            if (back + 1 < need) end -= back + 1
-        }
-        return String(bytes, 0, end, Charsets.UTF_8)
-    }
-}
+    }}

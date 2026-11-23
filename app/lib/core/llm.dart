@@ -1124,25 +1124,33 @@ class VinyloServerEngine implements TranslationEngine {
 // ─────────────────────────────── On-device llama.cpp ───────────────────────────────
 
 /// Runs one Gemma prompt on the device and returns the generated text (platform channel).
-typedef LocalRunner = Future<String> Function(String prompt, int maxTokens);
-typedef LocalStreamRunner = Stream<String> Function(String prompt, int maxTokens);
+/// [closeDepth] > 0 stops generation once the model closes that many open JSON objects/arrays.
+typedef LocalRunner = Future<String> Function(String prompt, int maxTokens, {int closeDepth});
 
-/// Gemma 4 E2B (QAT q4_0) through llama.cpp on the phone (SIR-8). Uses the same JSON prompts as
-/// the cloud engines, but in small chunks: a 2B model on a phone CPU stays accurate and the
-/// progress bar moves while the song is translated.
+/// vinylo-e2b-lyrics through llama.cpp on the phone (SIR-8): Gemma 4 E2B distilled from Gemma 4 31B on
+/// this app's prompt and quantized to 2 bits with QAT (0.98 GB).
+///
+/// One request per lyric line, so each line shows as soon as it is done. It costs no more than
+/// 8-line chunks: the system prompt stays in llama.cpp's KV cache and is decoded once per song,
+/// the answer's opening `{"lines":[{"i":` is written into the prompt instead of generated, and
+/// generation stops the moment the line's entry closes.
 class LocalLlamaEngine extends CloudChatEngine {
   final LocalRunner runner;
-
-  /// Streams the text as it is generated, so a chunk's lines show one by one (feedback 11/22 #5: the
-  /// count sat at "0/57줄" until a whole 8-line chunk was done).
-  final LocalStreamRunner? streamer;
   final String modelName;
-  static const chunkLines = 8;
 
-  LocalLlamaEngine(this.runner, {this.streamer, this.modelName = 'gemma-4-e2b'}) : super('local', modelName, null);
+  LocalLlamaEngine(this.runner, {this.modelName = 'vinylo-e2b-lyrics'}) : super('local', modelName, null);
+
+  /// The prompt the model was trained on (the app's p2). It is pinned here: the cloud prompt moves
+  /// on, and a 2-bit model answers best to the exact text it learned.
+  static const promptVersion = 'p2';
+
+  /// The answer up to the line's index; the model continues with `5,"t":"…","r":"…"}`.
+  static const answerPrefix = '{"lines":[{"i":';
+
+  static const maxLineTokens = 256;
 
   @override
-  String get id => 'llama:$modelName@q4_0';
+  String get id => 'llama:$modelName@$promptVersion';
   @override
   EngineKind get kind => EngineKind.onDevice;
   @override
@@ -1151,6 +1159,34 @@ class LocalLlamaEngine extends CloudChatEngine {
   /// Gemma 4 chat format; the system prompt goes in its own turn.
   static String gemmaPrompt(String system, String user) =>
       '<|turn>system\n$system<turn|>\n<|turn>user\n$user<turn|>\n<|turn>model\n';
+
+  // Training text, verbatim (including the word 독음): do not edit without retraining the model.
+  static String _readingScript(Language target) => switch (target.code) {
+        'ko' => 'Hangul (Korean 독음, e.g. 君の名は → 키미노 나와)',
+        'ja' => 'Katakana',
+        'zh' => 'Pinyin with tone marks for Chinese lines, otherwise Latin letters',
+        _ => 'Latin letters (romanization)',
+      };
+
+  static String translationSystem(Language target) {
+    final name = target.englishName;
+    return 'You translate song lyrics for language learners.\n'
+        'Translate each numbered line into natural, idiomatic $name (${target.code}).\n'
+        'Rules:\n'
+        '- Keep the meaning, tone and register of the song; prefer natural phrasing over literal word order.\n'
+        '- Use the surrounding lines as context for pronouns, tense and slang.\n'
+        '- Return exactly one entry per input index. Never merge or split lines.\n'
+        '- If a line is already in $name, return it with "copy": true and no translation.\n'
+        '- For every translated line also give "r": how the ORIGINAL line sounds when sung, written in '
+        '${_readingScript(target)}. Transcribe the sound only; do not translate it. '
+        'Leave "r" out when the original is already written in that script.\n'
+        '- Do not censor the original meaning.\n'
+        'Respond only with JSON: {"lines":[{"i":0,"t":"...","r":"..."},{"i":1,"copy":true}]}';
+  }
+
+  /// The prompt for one line, ending inside the opened answer.
+  static String linePrompt(Language target, LyricLine line) =>
+      gemmaPrompt(translationSystem(target), Prompts.translationUser([line])) + answerPrefix;
 
   @override
   Future<String> complete({required String system, required String user, required int maxTokens}) async {
@@ -1161,25 +1197,21 @@ class LocalLlamaEngine extends CloudChatEngine {
   }
 
   @override
-  Stream<String> completeStream({required String system, required String user, required int maxTokens}) {
-    final s = streamer;
-    if (s == null) return super.completeStream(system: system, user: user, maxTokens: maxTokens);
-    return s(gemmaPrompt(system, user), maxTokens);
+  Stream<LineResult> translateSong(List<LyricLine> lines, Language target) async* {
+    for (final l in lines.where((l) => l.text.isNotEmpty)) {
+      yield LanguageGuess.isLikely(l.text, target.code) ? Copied(l.index) : await translateLine(l, target);
+    }
   }
 
-  @override
-  Stream<LineResult> translateSong(List<LyricLine> lines, Language target) async* {
-    final todo = <LyricLine>[];
-    for (final l in lines.where((l) => l.text.isNotEmpty)) {
-      if (LanguageGuess.isLikely(l.text, target.code)) {
-        yield Copied(l.index);
-      } else {
-        todo.add(l);
-      }
-    }
-    for (var i = 0; i < todo.length; i += chunkLines) {
-      yield* super.translateSong(todo.sublist(i, min(i + chunkLines, todo.length)), target);
-    }
+  /// One line. A failed answer is asked for once more without the forced opening (greedy decoding
+  /// would repeat the same answer to the same prompt).
+  Future<LineResult> translateLine(LyricLine line, Language target) async {
+    final out = await runner(linePrompt(target, line), maxLineTokens, closeDepth: 1);
+    final first = OutputValidator.translationResults('$answerPrefix$out]}', [line]).first;
+    if (first is! Failed) return first;
+    final retry = await runner(gemmaPrompt(translationSystem(target), Prompts.translationUser([line])), maxLineTokens);
+    final second = OutputValidator.translationResults(retry, [line]).first;
+    return second is Failed ? first : second;
   }
 }
 

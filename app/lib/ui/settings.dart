@@ -585,7 +585,7 @@ class _SettingsViewState extends State<SettingsView> {
               children: [
                 Expanded(
                   child: Text(
-                    tr('Gemma 4 E2B 다운로드 중… {0} / {1}', [
+                    tr('번역 모델 다운로드 중… {0} / {1}', [
                       StorageMeter.format(
                         (p * ModelManager.approximateBytes).round(),
                       ),
@@ -618,11 +618,11 @@ class _SettingsViewState extends State<SettingsView> {
       return _row(tr('온디바이스 모델'), trailing: tr('이 기기에서는 지원하지 않아요'));
     }
     if (ModelManager.isInstalled) {
-      return _row(tr('온디바이스 모델'), trailing: tr('Gemma 4 E2B 설치됨'));
+      return _row(tr('온디바이스 모델'), trailing: tr('번역 모델 설치됨'));
     }
     return ListTile(
       title: Text(
-        tr('Gemma 4 E2B 내려받기 ({0})', [
+        tr('번역 모델 내려받기 ({0})', [
           StorageMeter.format(ModelManager.approximateBytes),
         ]),
         style: TextStyle(color: t.accent),
@@ -633,7 +633,7 @@ class _SettingsViewState extends State<SettingsView> {
           await ModelManager.download((p) {
             if (mounted) setState(() => downloadProgress = p);
           });
-          if (mounted) showMessage(context, tr('Gemma 4 E2B를 설치했어요.'));
+          if (mounted) showMessage(context, tr('번역 모델을 설치했어요.'));
         } on CancelledException {
           if (mounted) showMessage(context, tr('다운로드를 멈췄어요. 다시 누르면 이어서 받아요.'));
         } catch (_) {
