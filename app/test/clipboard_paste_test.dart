@@ -37,8 +37,12 @@ void main() {
     expect(find.text('line one\nline two'), findsOneWidget);
   });
 
-  testWidgets('no button when the clipboard is empty', (t) async {
+  // Figma: the bar is always at the bottom of the empty lyrics box; an empty clipboard pastes nothing.
+  testWidgets('an empty clipboard leaves the lyrics empty', (t) async {
     await openAdd(t, hasText: false);
-    expect(find.text('클립보드에서 붙여넣기'), findsNothing);
+    await t.tap(find.text('클립보드에서 붙여넣기'));
+    await t.pumpAndSettle();
+    expect(find.text('클립보드에서 붙여넣기'), findsOneWidget);
+    expect(find.text('line one\nline two'), findsNothing);
   });
 }

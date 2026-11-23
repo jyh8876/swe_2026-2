@@ -12,6 +12,7 @@ import '../app/platform_services.dart';
 import '../app/theme.dart';
 import '../core/lyrics.dart';
 import 'components.dart';
+import 'lyrics_import_guide_graphic.dart';
 
 /// Opens the in-app browser (Android System WebView = Chromium, iOS WKWebView) on the web search
 /// for the song's LRC. Resolves to the text the user selected on a page, or null when they close
@@ -301,155 +302,73 @@ class _LyricsBrowserViewState extends State<LyricsBrowserView> {
   }
 }
 
-/// "가사는 어떻게 불러오나요?" (feedback 11/19 #9): search with .lrc, copy the timed lyrics,
-/// paste. The steps play one after another; the motion graphics from design replace them later.
+/// "가사는 어떻게 불러오나요?" (Figma 가사 불러오는 법): the how-to graphic, steps 1–3 and the
+/// "LRC 가사는 무엇인가요?" box. SUIT applies to this screen only.
 Future<void> showLyricsGuide(BuildContext context) =>
     Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => const LyricsGuideView()));
 
-class LyricsGuideView extends StatefulWidget {
+class LyricsGuideView extends StatelessWidget {
   const LyricsGuideView({super.key});
-  @override
-  State<LyricsGuideView> createState() => _LyricsGuideViewState();
-}
-
-class _LyricsGuideViewState extends State<LyricsGuideView> with SingleTickerProviderStateMixin {
-  late final _play = AnimationController(vsync: this, duration: const Duration(seconds: 9));
-
-  @override
-  void initState() {
-    super.initState();
-    _play.repeat();
-  }
-
-  @override
-  void dispose() {
-    _play.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
-    final still = MediaQuery.of(context).disableAnimations;
-    return Scaffold(
-      appBar: AppBar(title: Text(tr('가사 불러오는 법')), centerTitle: true),
-      body: AnimatedBuilder(
-        animation: _play,
-        builder: (context, _) {
-          // Which step is playing: each takes a third of the loop.
-          final active = still ? -1 : (_play.value * 3).floor();
-          final within = still ? 1.0 : (_play.value * 3) % 1;
-          return ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 24), children: [
-            _card(0, active, tr('노래를 .lrc 와 함께 검색해요'), tr('노래 추가 화면의 "가사 검색" 버튼을 누르면 제목·아티스트 뒤에 .lrc 를 붙여 검색해요.'),
-                _searchBar('Count on Me Bruno Mars .lrc', active == 0 ? within : 1)),
-            _card(1, active, tr('시간이 붙은 가사를 길게 눌러 복사해요'), tr('[00:13.04] 처럼 시간이 붙은 가사가 LRC 가사예요. 길게 눌러 처음부터 끝까지 선택해요.'),
-                _lrcSample(active == 1 ? within : 1)),
-            _card(2, active, tr('가사 칸에 붙여넣어요'), tr('시간 정보가 있으면 자동으로 알아보고, 노래에 맞춰 가사가 넘어가요.'), _pasted(active == 2 ? within : 1)),
-            const SizedBox(height: 8),
-            Text(tr('LRC 가사가 없으면 일반 가사를 붙여넣어도 돼요. 재생 화면에서 탭으로 싱크를 맞출 수 있어요.'),
-                style: TextStyle(fontSize: 13, color: t.textSecondary, height: 1.5)),
-          ]);
-        },
-      ),
-    );
-  }
+    final base = Theme.of(context);
+    TextStyle s(double size, FontWeight w, Color c, double ls, double h) =>
+        TextStyle(fontSize: size, fontWeight: w, color: c, letterSpacing: ls, height: h / size);
 
-  Widget _card(int i, int active, String title, String body, Widget demo) {
-    final t = context.theme;
-    final on = active == i || active < 0;
-    return AnimatedOpacity(
-      duration: const Duration(milliseconds: 250),
-      opacity: on ? 1 : 0.45,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 14),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: t.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: active == i ? t.accent : t.stroke),
-        ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Container(
-              width: 22,
-              height: 22,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(color: t.accent, shape: BoxShape.circle),
-              child: Text('${i + 1}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: t.onAccent)),
-            ),
-            const SizedBox(width: 8),
-            Expanded(child: Text(title, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: t.textPrimary))),
-          ]),
-          const SizedBox(height: 6),
-          Text(body, style: TextStyle(fontSize: 13, color: t.textSecondary, height: 1.45)),
-          const SizedBox(height: 12),
-          demo,
-        ]),
-      ),
-    );
-  }
-
-  /// The query typing itself out.
-  Widget _searchBar(String q, double p) {
-    final t = context.theme;
-    final shown = q.substring(0, (q.length * (p * 1.6).clamp(0.0, 1.0)).round());
-    return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(color: t.background, borderRadius: BorderRadius.circular(20)),
-      child: Row(children: [
-        Icon(Icons.search, size: 18, color: t.textTertiary),
-        const SizedBox(width: 8),
-        Expanded(child: Text(shown, maxLines: 1, overflow: TextOverflow.clip, style: TextStyle(fontSize: 13, color: t.textPrimary))),
-      ]),
-    );
-  }
-
-  static const _sample = ['[00:13.04] You can count on me like one, two, three', "[00:16.52] I'll be there", '[00:18.11] And I know when I need it'];
-
-  /// The LRC lines getting selected one by one.
-  Widget _lrcSample(double p) {
-    final t = context.theme;
-    final selected = (p * 1.4 * _sample.length).floor();
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(color: t.background, borderRadius: BorderRadius.circular(8)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        for (var i = 0; i < _sample.length; i++)
+    Widget step(int n, String title, String desc) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Container(
-            margin: const EdgeInsets.symmetric(vertical: 1),
-            color: i < selected ? t.accent.withValues(alpha: 0.25) : Colors.transparent,
-            child: Text(_sample[i], style: TextStyle(fontSize: 12, fontFamily: 'monospace', color: t.textPrimary)),
+            width: 24,
+            height: 24,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: t.surfaceRaised, borderRadius: BorderRadius.circular(12)),
+            child: Text('$n', style: s(14, FontWeight.w700, t.textSecondary, -0.28, 18)),
           ),
-      ]),
-    );
-  }
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: s(16, FontWeight.w700, t.textPrimary, -0.24, 22)),
+              const SizedBox(height: 4),
+              Text(desc, style: s(14, FontWeight.w400, t.textTertiary, -0.21, 18)),
+            ]),
+          ),
+        ]);
 
-  /// The pasted lyrics and the recognised mark.
-  Widget _pasted(double p) {
-    final t = context.theme;
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), border: Border.all(color: t.stroke)),
-        child: AnimatedOpacity(
-          duration: const Duration(milliseconds: 200),
-          opacity: p > 0.25 ? 1 : 0,
-          child: Text(_sample.join('\n'), style: TextStyle(fontSize: 12, fontFamily: 'monospace', color: t.textPrimary)),
+    return Theme(
+      data: base.copyWith(
+        textTheme: base.textTheme.apply(fontFamily: 'SUIT'),
+        appBarTheme: base.appBarTheme.copyWith(
+          titleTextStyle: (base.appBarTheme.titleTextStyle ?? base.textTheme.titleLarge)?.copyWith(fontFamily: 'SUIT'),
         ),
       ),
-      const SizedBox(height: 8),
-      AnimatedOpacity(
-        duration: const Duration(milliseconds: 200),
-        opacity: p > 0.5 ? 1 : 0,
-        child: Row(children: [
-          Icon(Icons.check_circle_rounded, size: 16, color: t.brandInk),
-          const SizedBox(width: 6),
-          Text(tr('싱크 가사를 인식했어요'), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: t.brandInk)),
+      child: Scaffold(
+        appBar: AppBar(title: Text(tr('가사 불러오는 법')), centerTitle: true),
+        body: ListView(padding: const EdgeInsets.fromLTRB(20, 24, 20, 24), children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: LyricsImportGuideGraphic(background: t.background, fontFamily: 'SUIT', translate: tr),
+          ),
+          const SizedBox(height: 24),
+          step(1, tr('가사 검색 버튼을 눌러요'), tr('입력한 제목과 아티스트명으로 자동으로 검색해요.')),
+          const SizedBox(height: 24),
+          step(2, tr('가사를 웹사이트에서 복사해요'), tr('처음부터 끝까지 드래그해서 선택하거나,\n웹사이트에서 제공되는 복사 버튼을 활용해요.')),
+          const SizedBox(height: 24),
+          step(3, tr('가사 칸에 붙여넣어요'), tr('시간 정보가 있는 LRC 가사를 가져오면,\n노래에 맞춰 자동으로 가사가 넘어가요.')),
+          const SizedBox(height: 24),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: const Color(0xFFF3F4F5), borderRadius: BorderRadius.circular(12)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(tr('LRC 가사는 무엇인가요?'), style: s(16, FontWeight.w700, t.textPrimary, -0.24, 22)),
+              const SizedBox(height: 6),
+              Text(tr('[00:13.04] 처럼 시간 정보가 있는 가사가 LRC 가사예요. LRC 가사가 없으면 일반 가사를 붙여넣어도 돼요.'),
+                  style: s(14, FontWeight.w400, t.textSecondary, -0.21, 18)),
+            ]),
+          ),
         ]),
       ),
-    ]);
+    );
   }
 }
 
@@ -463,28 +382,24 @@ class LyricsSearchChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
+    final name = [title.trim(), artist.trim()].where((x) => x.isNotEmpty).join(' - ');
+    TextStyle s(Color c) => TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: c, letterSpacing: -0.28, height: 18 / 14);
     return Align(
       alignment: Alignment.centerLeft,
       child: Material(
-        color: t.surface,
+        color: t.surfaceRaised,
         shape: const StadiumBorder(),
         child: InkWell(
           customBorder: const StadiumBorder(),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 9, 12, 9),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Flexible(
-                child: Text(
-                  [title.trim(), artist.trim()].where((x) => x.isNotEmpty).join(' – '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 14, color: t.textPrimary),
-                ),
-              ),
-              Text(' ${tr('가사 검색')}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: t.textPrimary)),
-              const SizedBox(width: 6),
-              Icon(Icons.north_east, size: 16, color: t.textPrimary),
+              Flexible(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: s(t.textSecondary))),
+              const SizedBox(width: 4),
+              Text(tr('가사 검색'), style: s(t.textPrimary)),
+              const SizedBox(width: 4),
+              Icon(Icons.north_east, size: 20, color: t.textPrimary),
             ]),
           ),
         ),
