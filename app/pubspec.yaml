@@ -74,6 +74,7 @@ flutter:
   assets:
     - assets/curated_shelves.json
     - assets/brand/
+    - assets/onboarding/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
