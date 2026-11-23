@@ -184,7 +184,7 @@ final class AppleMusicBridge: NSObject, FlutterStreamHandler {
 
   private func listTracks(kind: String, id: String, _ result: @escaping FlutterResult) async {
     do {
-      var first: MusicItemCollection<Track>?
+      var first: MusicItemCollection<MusicKit.Track>?
       if kind == "album" {
         var r = MusicLibraryRequest<Album>()
         r.filter(matching: \.id, equalTo: MusicItemID(id))
