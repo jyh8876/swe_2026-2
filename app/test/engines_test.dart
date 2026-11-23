@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -125,5 +126,26 @@ void main() {
     expect(prompts.first, endsWith('<|turn>model\n'));
     expect(results.whereType<Translated>().length, 10);
     expect(results.whereType<Copied>().single.index, 10);
+  });
+
+  test('on-device: streamed lines are handed on before the chunk is finished', () async {
+    final gate = Completer<void>();
+    Stream<String> streamer(String prompt, int maxTokens) async* {
+      // The first entry, cut in the middle as tokens arrive.
+      yield '{"lines":[{"i":0,"t":"첫';
+      yield ' 줄"},';
+      await gate.future;
+      yield '{"i":1,"t":"둘째 줄"}]}';
+    }
+
+    final engine = LocalLlamaEngine((_, _) async => throw StateError('not used'), streamer: streamer);
+    final lines = sampleLines(['First line here', 'Second line here']);
+    final seen = <LineResult>[];
+    final done = engine.translateSong(lines, ko).forEach(seen.add);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(seen.whereType<Translated>().map((t) => t.text), ['첫 줄']);
+    gate.complete();
+    await done;
+    expect(seen.whereType<Translated>().map((t) => t.text), ['첫 줄', '둘째 줄']);
   });
 }

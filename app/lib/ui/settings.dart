@@ -254,8 +254,10 @@ class _SettingsViewState extends State<SettingsView> {
               onChanged: (v) => model.updateSettings((x) => x.showReading = v),
             ),
           ]),
+          // On iOS this is the Apple Music connection (MusicKit), in the place the Spotify row had
+          // (feedback 11/22 #4, #24); Android follows any music app through media sessions.
           if (MusicApp.supported)
-            _section(tr('음악 앱'), [
+            _section(isIOS ? 'Apple Music' : tr('음악 앱'), [
               ListTile(
                 leading: Icon(
                   model.musicAppAccess
@@ -264,7 +266,7 @@ class _SettingsViewState extends State<SettingsView> {
                   color: model.musicAppAccess ? t.brand : t.textSecondary,
                 ),
                 title: Text(
-                  tr('듣는 곡 따라가기'),
+                  isIOS ? tr('Apple Music 연결') : tr('듣는 곡 따라가기'),
                   style: TextStyle(color: t.textPrimary),
                 ),
                 subtitle: Text(
@@ -273,6 +275,8 @@ class _SettingsViewState extends State<SettingsView> {
                                 model.nowPlaying?.appName != null
                             ? tr('연결됨 · 지금 {0}', [model.nowPlaying!.appName!])
                             : tr('연결됨'))
+                      : isIOS
+                      ? tr('연결하면 Apple Music으로 듣는 곡의 가사가 따라오고, Vinylo에서 재생을 제어할 수 있어요')
                       : tr('연결 안 됨'),
                   style: TextStyle(fontSize: 12, color: t.textTertiary),
                 ),

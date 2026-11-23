@@ -157,14 +157,53 @@ class ModelManager {
 /// Platform channel to llama.cpp (android/app/src/main/cpp/vinylo_llm.cpp).
 class LocalLlama {
   static const _channel = MethodChannel('vinylo/llama');
+  /// Open streams by id, with how much text each has been sent.
+  static final _streams = <int, ({StreamController<String> out, List<int> sent})>{};
+  static var _nextStream = 0;
+  static bool _listening = false;
 
-  static Future<String> complete(String prompt, int maxTokens) async {
+  static Future<String> complete(String prompt, int maxTokens) => _complete(prompt, maxTokens, null);
+
+  /// The model's text as it is generated: pieces arrive about every 200 ms, the rest when it ends.
+  static Stream<String> completeStream(String prompt, int maxTokens) {
+    if (!_listening) {
+      _listening = true;
+      _channel.setMethodCallHandler((call) async {
+        if (call.method != 'partial') return;
+        final args = call.arguments as Map;
+        final s = _streams[args['id'] as int];
+        if (s == null) return;
+        final text = args['text'] as String;
+        s.sent[0] += text.length;
+        s.out.add(text);
+      });
+    }
+    final id = _nextStream++;
+    final s = (out: StreamController<String>(), sent: [0]);
+    _streams[id] = s;
+    () async {
+      try {
+        final whole = await _complete(prompt, maxTokens, id);
+        // The pieces sent so far are a prefix of the whole text; hand on what is left.
+        if (whole.length > s.sent[0]) s.out.add(whole.substring(s.sent[0]));
+      } catch (e) {
+        s.out.addError(e);
+      } finally {
+        _streams.remove(id);
+        await s.out.close();
+      }
+    }();
+    return s.out.stream;
+  }
+
+  static Future<String> _complete(String prompt, int maxTokens, int? streamId) async {
     try {
       final out = await _channel.invokeMethod<String>('complete', {
         'path': ModelManager.modelFile.path,
         'prompt': prompt,
         'maxTokens': maxTokens,
         'nCtx': 4096,
+        'streamId': ?streamId,
       });
       return out ?? '';
     } on PlatformException catch (e) {
@@ -234,6 +273,7 @@ class EngineFactory {
       ModelManager.isSupported && ModelManager.isInstalled
           ? LocalLlamaEngine(
               LocalLlama.complete,
+              streamer: LocalLlama.completeStream,
               modelName: ModelManager.modelName,
             )
           : const UnavailableEngine(

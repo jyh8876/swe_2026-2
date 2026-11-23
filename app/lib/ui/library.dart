@@ -238,41 +238,6 @@ class AlbumPlate extends StatelessWidget {
   }
 }
 
-/// The album as a thick object: the sleeve in front, a stack of edge layers behind it so the right and
-/// bottom sides show about 14 px of depth. The drop shadow sits on the deepest layer.
-class AlbumSlab extends StatelessWidget {
-  final Song song;
-  final double size;
-  final bool translating;
-  const AlbumSlab({super.key, required this.song, required this.size, this.translating = false});
-
-  static const layers = 14;
-  static const stepX = 1.0, stepY = 0.7;
-
-  @override
-  Widget build(BuildContext context) {
-    const near = Color(0xFF8A8D96), far = Color(0xFF3E4046);
-    return Stack(clipBehavior: Clip.none, children: [
-      for (var k = layers; k >= 1; k--)
-        Positioned(
-          left: k * stepX,
-          top: k * stepY,
-          width: size,
-          height: size,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: Color.lerp(near, far, k / layers),
-              borderRadius: BorderRadius.circular(2),
-              border: k == 1 ? Border.all(color: Colors.white.withValues(alpha: 0.18)) : null,
-              boxShadow: k == layers ? const [BoxShadow(color: Color(0x4D000000), offset: Offset(0, 22), blurRadius: 34, spreadRadius: -14)] : null,
-            ),
-          ),
-        ),
-      AlbumPlate(song: song, size: size, translating: translating, shadow: const []),
-    ]);
-  }
-}
-
 /// Figma album card: the sleeve with the record peeking out on the right.
 class SleeveWithDisc extends StatelessWidget {
   final Song song;
@@ -473,7 +438,7 @@ class _CarouselState extends State<_Carousel> with SingleTickerProviderStateMixi
       ..scaleByDouble(s, s, 1, 1);
     final song = widget.songs[i];
     return Positioned(
-      left: cx - plate / 2 - AlbumSlab.layers * AlbumSlab.stepX / 2 + d * spacing,
+      left: cx - plate / 2 + d * spacing,
       top: top,
       width: plate,
       height: plate,
@@ -492,10 +457,12 @@ class _CarouselState extends State<_Carousel> with SingleTickerProviderStateMixi
                 HapticFeedback.mediumImpact();
                 showSongMenu(context, song);
               },
-              child: AlbumSlab(
+              // Flat sleeve (feedback 11/22 #17): the thick "slab" edges made the cover look like a box.
+              child: AlbumPlate(
                 song: song,
                 size: plate,
                 translating: model.isTranslating(song.id),
+                shadow: const [BoxShadow(color: Color(0x40000000), offset: Offset(0, 24), blurRadius: 36, spreadRadius: -16)],
               ),
             ),
           ),

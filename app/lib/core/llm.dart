@@ -1125,16 +1125,21 @@ class VinyloServerEngine implements TranslationEngine {
 
 /// Runs one Gemma prompt on the device and returns the generated text (platform channel).
 typedef LocalRunner = Future<String> Function(String prompt, int maxTokens);
+typedef LocalStreamRunner = Stream<String> Function(String prompt, int maxTokens);
 
 /// Gemma 4 E2B (QAT q4_0) through llama.cpp on the phone (SIR-8). Uses the same JSON prompts as
 /// the cloud engines, but in small chunks: a 2B model on a phone CPU stays accurate and the
 /// progress bar moves while the song is translated.
 class LocalLlamaEngine extends CloudChatEngine {
   final LocalRunner runner;
+
+  /// Streams the text as it is generated, so a chunk's lines show one by one (feedback 11/22 #5: the
+  /// count sat at "0/57줄" until a whole 8-line chunk was done).
+  final LocalStreamRunner? streamer;
   final String modelName;
   static const chunkLines = 8;
 
-  LocalLlamaEngine(this.runner, {this.modelName = 'gemma-4-e2b'}) : super('local', modelName, null);
+  LocalLlamaEngine(this.runner, {this.streamer, this.modelName = 'gemma-4-e2b'}) : super('local', modelName, null);
 
   @override
   String get id => 'llama:$modelName@q4_0';
@@ -1153,6 +1158,13 @@ class LocalLlamaEngine extends CloudChatEngine {
     // Drop a thinking block if the model emits one.
     final i = out.lastIndexOf('<channel|>');
     return i >= 0 ? out.substring(i + '<channel|>'.length) : out;
+  }
+
+  @override
+  Stream<String> completeStream({required String system, required String user, required int maxTokens}) {
+    final s = streamer;
+    if (s == null) return super.completeStream(system: system, user: user, maxTokens: maxTokens);
+    return s(gemmaPrompt(system, user), maxTokens);
   }
 
   @override

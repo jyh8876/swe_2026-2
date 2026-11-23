@@ -45,6 +45,8 @@ dependencies:
   crypto: ^3.0.6
   sign_in_with_apple: ^8.2.0
   webview_flutter: ^4.14.1
+  # Direct for the iOS back/forward swipe in the lyrics browser (already pulled in by webview_flutter).
+  webview_flutter_wkwebview: ^3.27.2
 
 dev_dependencies:
   flutter_test:

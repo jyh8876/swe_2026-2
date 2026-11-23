@@ -1,10 +1,14 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart' hide Route;
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
 import '../app/i18n.dart';
+import '../app/platform_services.dart';
 import '../app/theme.dart';
 import '../core/lyrics.dart';
 import 'components.dart';
@@ -13,6 +17,10 @@ import 'components.dart';
 /// for the song's LRC. Resolves to the text the user selected on a page, or null when they close
 /// it. The app never reads or extracts a page by itself (feedback 11/19 #13, option 2): only what
 /// the user selects is taken, as with copy and paste.
+///
+/// Toolbar like KakaoTalk's in-app browser (feedback 11/22 #14): back, forward, reload and "open in
+/// the browser" along the bottom. The last one is the way out when a site's bot check (Cloudflare on
+/// Lyricsify) does not pass inside a web view (#3): the user copies there and pastes on return.
 Future<String?> openLyricsBrowser(BuildContext context, {required String title, String artist = ''}) {
   return Navigator.of(context, rootNavigator: true).push<String>(MaterialPageRoute(
     fullscreenDialog: true,
@@ -40,19 +48,12 @@ class _LyricsBrowserViewState extends State<LyricsBrowserView> {
   static const _safariUserAgent =
       'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
 
-  /// Reports the selection to the app whenever it changes (no page content is read otherwise).
-  static const _watchSelection = """
-(function () {
-  if (window.__vinyloSel) return;
-  window.__vinyloSel = true;
-  var t = null;
-  document.addEventListener('selectionchange', function () {
-    clearTimeout(t);
-    t = setTimeout(function () {
-      VinyloSelection.postMessage(window.getSelection ? String(window.getSelection()) : '');
-    }, 150);
-  });
-})();""";
+  /// Reads the current selection. Polled from the app rather than reported by the page: a listener
+  /// and a JavaScript channel would leave app objects in every page, including Cloudflare's bot check,
+  /// which can take them for automation (feedback 11/22 #3, hypothesis 4).
+  static const _readSelection = "window.getSelection ? String(window.getSelection()) : ''";
+  Timer? _poll;
+  bool _reading = false;
 
   @override
   void initState() {
@@ -62,9 +63,6 @@ class _LyricsBrowserViewState extends State<LyricsBrowserView> {
       // WKWebView's own user agent lacks the Version/Safari tokens, so sites with a bot check (Lyricsify)
       // fail to verify; a regular mobile Safari agent passes.
       ..setUserAgent(Platform.isIOS ? _safariUserAgent : null)
-      ..addJavaScriptChannel('VinyloSelection', onMessageReceived: (m) {
-        if (mounted && m.message != _selection) setState(() => _selection = m.message);
-      })
       ..setNavigationDelegate(NavigationDelegate(
         onProgress: (p) {
           if (mounted) setState(() => _progress = p);
@@ -75,17 +73,38 @@ class _LyricsBrowserViewState extends State<LyricsBrowserView> {
           if (!_barFocus.hasFocus) _bar.text = _display(url);
           _syncHistory();
         },
-        onPageFinished: (_) {
-          _web.runJavaScript(_watchSelection).catchError((_) {});
-          _syncHistory();
-        },
+        onPageFinished: (_) => _syncHistory(),
+        // Pages that change the address without loading (search results, single-page sites) would leave
+        // the arrows stale, which is why they seemed not to work on Android.
+        onUrlChange: (_) => _syncHistory(),
         onNavigationRequest: _onNavigation,
       ))
       ..loadRequest(LyricsWebSearch.urlFor(widget.query));
+    // iOS: swipe from the left edge for the previous page, as in Safari.
+    final platform = _web.platform;
+    if (platform is WebKitWebViewController) platform.setAllowsBackForwardNavigationGestures(true);
+    _poll = Timer.periodic(const Duration(milliseconds: 400), (_) => _pollSelection());
+  }
+
+  Future<void> _pollSelection() async {
+    if (_reading || !mounted) return;
+    _reading = true;
+    try {
+      final r = await _web.runJavaScriptReturningResult(_readSelection);
+      var text = r is String ? r : '$r';
+      // Android returns the value JSON-encoded, iOS as it is.
+      if (Platform.isAndroid && text.startsWith('"')) text = jsonDecode(text) as String;
+      if (mounted && text != _selection) setState(() => _selection = text);
+    } catch (_) {
+      // Page still loading or navigating: try again on the next tick.
+    } finally {
+      _reading = false;
+    }
   }
 
   @override
   void dispose() {
+    _poll?.cancel();
     _bar.dispose();
     _barFocus.dispose();
     super.dispose();
@@ -135,6 +154,33 @@ class _LyricsBrowserViewState extends State<LyricsBrowserView> {
     if (input.trim().isEmpty) return;
     _barFocus.unfocus();
     _web.loadRequest(LyricsWebSearch.urlFor(input));
+  }
+
+  Future<void> _goBack() async {
+    await _web.goBack();
+    _syncHistory();
+  }
+
+  Future<void> _goForward() async {
+    await _web.goForward();
+    _syncHistory();
+  }
+
+  /// Opens this page in the phone's browser and closes the in-app one: lyrics copied there are offered
+  /// for pasting in the lyrics field on return.
+  Future<void> _openOutside() async {
+    final url = await _web.currentUrl();
+    final u = url == null ? null : Uri.tryParse(url);
+    if (u == null || !mounted) return;
+    try {
+      await Links.open(u);
+    } catch (_) {
+      if (mounted) showMessage(context, tr('브라우저를 열지 못했어요.'));
+      return;
+    }
+    if (!mounted) return;
+    showMessage(context, tr('가사를 복사해서 돌아오면 가사 칸에 붙여넣을 수 있어요.'));
+    Navigator.pop(context);
   }
 
   /// The system back button goes back in the page history before it closes the browser.
@@ -205,28 +251,30 @@ class _LyricsBrowserViewState extends State<LyricsBrowserView> {
             top: false,
             child: Container(
               decoration: BoxDecoration(color: t.background, border: Border(top: BorderSide(color: t.stroke))),
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: Row(children: [
-                IconButton(tooltip: tr('이전 페이지'), onPressed: _canBack ? _web.goBack : null, icon: const Icon(Icons.chevron_left_rounded, size: 28)),
-                IconButton(tooltip: tr('다음 페이지'), onPressed: _canForward ? _web.goForward : null, icon: const Icon(Icons.chevron_right_rounded, size: 28)),
-                IconButton(tooltip: tr('새로고침'), onPressed: _web.reload, icon: const Icon(Icons.refresh_rounded, size: 22)),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: SizedBox(
-                    height: 48,
-                    child: FilledButton.icon(
-                      onPressed: n == 0 ? null : _take,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: t.accent,
-                        foregroundColor: t.onAccent,
-                        disabledBackgroundColor: t.surfaceRaised,
-                        disabledForegroundColor: t.textTertiary,
-                      ),
-                      icon: const Icon(Icons.download_rounded, size: 18),
-                      label: Text(n == 0 ? tr('가사를 선택해 주세요') : tr('선택한 가사 가져오기 ({0}줄)', ['$n'])),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: FilledButton.icon(
+                    onPressed: n == 0 ? null : _take,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: t.accent,
+                      foregroundColor: t.onAccent,
+                      disabledBackgroundColor: t.surfaceRaised,
+                      disabledForegroundColor: t.textTertiary,
                     ),
+                    icon: const Icon(Icons.download_rounded, size: 18),
+                    label: Text(n == 0 ? tr('가사를 선택해 주세요') : tr('선택한 가사 가져오기 ({0}줄)', ['$n'])),
                   ),
                 ),
+                // KakaoTalk-style toolbar: evenly spaced, greyed out when there is nowhere to go.
+                Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+                  IconButton(tooltip: tr('이전 페이지'), onPressed: _canBack ? _goBack : null, icon: const Icon(Icons.chevron_left_rounded, size: 30)),
+                  IconButton(tooltip: tr('다음 페이지'), onPressed: _canForward ? _goForward : null, icon: const Icon(Icons.chevron_right_rounded, size: 30)),
+                  IconButton(tooltip: tr('새로고침'), onPressed: _web.reload, icon: const Icon(Icons.refresh_rounded, size: 24)),
+                  IconButton(tooltip: tr('브라우저에서 열기'), onPressed: _openOutside, icon: const Icon(Icons.open_in_browser_rounded, size: 24)),
+                ]),
               ]),
             ),
           ),
