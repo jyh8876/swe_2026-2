@@ -144,6 +144,7 @@ class AppSettings {
   // Look (My page → 테마). Figma dark grey by default.
   ThemeBase themeBase = ThemeBase.light;
   AccentColor accent = AccentColor.mint;
+  LibraryLayout libraryLayout = LibraryLayout.carousel;
 
   EngineConfig get engineConfig => EngineConfig(
       vinyloURL: vinyloURL, vinyloModel: vinyloModel, gatewayURL: gatewayURL, gatewayModel: gatewayModel, claudeModel: claudeModel);
@@ -169,6 +170,7 @@ class AppSettings {
         'claudeModel': claudeModel,
         'themeBase': themeBase.name,
         'accent': accent.name,
+        'libraryLayout': libraryLayout.name,
       };
 
   static AppSettings fromJson(Map j) {
@@ -196,8 +198,20 @@ class AppSettings {
     s.claudeModel = j['claudeModel'] as String? ?? ClaudeEngine.defaultModel;
     s.themeBase = ThemeBase.values.firstWhere((e) => e.name == j['themeBase'], orElse: () => ThemeBase.light);
     s.accent = AccentColor.values.firstWhere((e) => e.name == j['accent'], orElse: () => AccentColor.mint);
+    s.libraryLayout = LibraryLayout.values.firstWhere((e) => e.name == j['libraryLayout'], orElse: () => LibraryLayout.carousel);
     return s;
   }
+}
+
+/// How the home shows the collection (My page → 보기 방식). Album slide is the default.
+enum LibraryLayout {
+  carousel('슬라이드'),
+  stack('겹쳐서'),
+  grid('격자'),
+  list('리스트');
+
+  final String label;
+  const LibraryLayout(this.label);
 }
 
 /// Bottom tabs (Notion "홈화면 하단 바"): library, quiz, saved phrases, my page.
@@ -1218,6 +1232,8 @@ class AppModel extends ChangeNotifier {
     _musicApp = app;
     // Lives as long as the app: the music-app source is never replaced.
     app.snapshots.listen((snap) => _onSnapshot(app, snap));
+    // iOS: the Apple Music playlists load as soon as it is connected (feedback 11/23).
+    if (appleMusicLibraryReady) spotifyLists(refresh: true);
     notifyListeners();
     return true;
   }
@@ -1296,12 +1312,20 @@ class AppModel extends ChangeNotifier {
   bool get spotifyLibraryReady =>
       spotifyAuth.isConfigured && spotifyAuth.hasToken && spotifyAuth.hasLibraryScopes && settings.connectedSources.contains(SourceID.spotify);
 
+  /// iOS: Apple Music is connected (MusicKit), so its library is read through the Apple Music API.
+  bool get appleMusicLibraryReady => Platform.isIOS && musicAppAccess;
+
+  /// The playlists shown in "내 플레이리스트" and on the home shelf: Apple Music on iOS, Spotify elsewhere.
+  bool get libraryReady => appleMusicLibraryReady || spotifyLibraryReady;
+
   Future<(List<SpotifyList>, List<SpotifyList>)>? _spotifyLists;
 
   /// Playlists and saved albums, fetched once per session unless [refresh] is set.
   Future<(List<SpotifyList>, List<SpotifyList>)> spotifyLists({bool refresh = false}) {
     if (refresh || _spotifyLists == null) {
-      final f = Future.wait([spotifyLibrary.playlists(), spotifyLibrary.savedAlbums()]).then((r) => (r[0], r[1]));
+      final f = appleMusicLibraryReady
+          ? AppleMusicLibrary.lists()
+          : Future.wait([spotifyLibrary.playlists(), spotifyLibrary.savedAlbums()]).then((r) => (r[0], r[1]));
       _spotifyLists = f;
       // A failed load is retried next time.
       f.catchError((Object _) {
@@ -1311,6 +1335,10 @@ class AppModel extends ChangeNotifier {
     }
     return _spotifyLists!;
   }
+
+  /// The tracks of one list, from wherever it came from.
+  Future<List<SpotifyTrack>> listTracks(SpotifyList list) =>
+      list.appleMusic ? AppleMusicLibrary.tracks(list) : spotifyLibrary.tracks(list);
 
   final Set<String> _coverTried = {};
   bool _fillingCovers = false;

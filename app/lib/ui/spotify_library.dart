@@ -1,9 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart' hide Route;
 
 import '../app/app_model.dart';
 import '../app/i18n.dart';
 import '../app/spotify_library.dart';
-import '../app/platform_services.dart';
 import '../app/theme.dart';
 import '../core/lyrics.dart';
 import '../core/playback.dart';
@@ -59,11 +60,22 @@ class _SpotifyLibraryPanelState extends State<SpotifyLibraryPanel> {
     final model = context.model;
     final t = context.theme;
     final auth = model.spotifyAuth;
-    if (!auth.isConfigured) {
+    if (Platform.isIOS) {
+      if (!model.appleMusicLibraryReady) {
+        return _prompt(
+          t,
+          tr('Apple Music을 연결하면 보관함의 플레이리스트와 앨범을 불러와요.'),
+          tr('Apple Music 연결하기'),
+          () async {
+            if (await confirmMusicAppAccess(context)) await model.requestMusicAppAccess();
+          },
+        );
+      }
+    } else if (!auth.isConfigured) {
       return _prompt(t, tr('이 빌드에는 Spotify 앱 정보가 없어요.'), null, null);
     }
-    if (!auth.hasToken ||
-        !model.settings.connectedSources.contains(SourceID.spotify)) {
+    if (!Platform.isIOS && (!auth.hasToken ||
+        !model.settings.connectedSources.contains(SourceID.spotify))) {
       return _prompt(
         t,
         tr('Spotify에 연결하면 내 플레이리스트와 저장한 앨범을 커버와 함께 불러와요.'),
@@ -71,7 +83,7 @@ class _SpotifyLibraryPanelState extends State<SpotifyLibraryPanel> {
         () => model.connect(SourceID.spotify),
       );
     }
-    if (!auth.hasLibraryScopes) {
+    if (!Platform.isIOS && !auth.hasLibraryScopes) {
       return _prompt(
         t,
         tr('플레이리스트와 앨범을 읽으려면 권한을 한 번 더 허용해야 해요.'),
@@ -110,14 +122,17 @@ class _SpotifyLibraryPanelState extends State<SpotifyLibraryPanel> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
             children: [
-              _ListRow(list: SpotifyList.liked, icon: Icons.favorite_rounded),
-              const SizedBox(height: 20),
+              if (!Platform.isIOS) ...[
+                _ListRow(list: SpotifyList.liked, icon: Icons.favorite_rounded),
+                const SizedBox(height: 20),
+              ],
               _header(t, tr('플레이리스트'), playlists.length),
               if (playlists.isEmpty) _empty(t, tr('플레이리스트가 없어요')),
               _grid(playlists),
               const SizedBox(height: 20),
               _header(t, tr('저장한 앨범'), albums.length),
-              if (albums.isEmpty) _empty(t, tr('Spotify에서 앨범을 저장하면 여기에 보여요')),
+              if (albums.isEmpty)
+                _empty(t, Platform.isIOS ? tr('Apple Music 보관함에 앨범을 추가하면 여기에 보여요') : tr('Spotify에서 앨범을 저장하면 여기에 보여요')),
               _grid(albums),
             ],
           ),
@@ -326,7 +341,7 @@ class SpotifyShelf extends StatelessWidget {
   Widget build(BuildContext context) {
     final model = context.model;
     final t = context.theme;
-    if (!SpotifyAuth.available || !model.spotifyLibraryReady) {
+    if (!model.libraryReady) {
       return const SizedBox();
     }
     return FutureBuilder<(List<SpotifyList>, List<SpotifyList>)>(
@@ -335,7 +350,7 @@ class SpotifyShelf extends StatelessWidget {
         if (!snap.hasData) return const SizedBox();
         final (playlists, albums) = snap.data!;
         final lists = [
-          SpotifyList.liked,
+          if (!Platform.isIOS) SpotifyList.liked,
           ...playlists.take(10),
           ...albums.take(10),
         ];
@@ -349,7 +364,7 @@ class SpotifyShelf extends StatelessWidget {
                 child: Row(
                   children: [
                     Text(
-                      tr('내 Spotify'),
+                      Platform.isIOS ? tr('내 Apple Music') : tr('내 Spotify'),
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
@@ -397,8 +412,7 @@ class SpotifyTracksView extends StatefulWidget {
 }
 
 class _SpotifyTracksViewState extends State<SpotifyTracksView> {
-  late Future<List<SpotifyTrack>> _tracks = context.readModel.spotifyLibrary
-      .tracks(widget.list);
+  late Future<List<SpotifyTrack>> _tracks = context.readModel.listTracks(widget.list);
 
   @override
   Widget build(BuildContext context) {
@@ -493,7 +507,7 @@ class _SpotifyTracksViewState extends State<SpotifyTracksView> {
                       const SizedBox(height: 12),
                       TextButton(
                         onPressed: () => setState(
-                          () => _tracks = model.spotifyLibrary.tracks(l),
+                          () => _tracks = model.listTracks(l),
                         ),
                         child: Text(
                           tr('다시 시도'),
@@ -597,7 +611,7 @@ class _SpotifyTracksViewState extends State<SpotifyTracksView> {
       ..album = track.album
       ..duration = track.duration
       ..coverURL = track.imageUrl
-      ..spotifyTrackID = track.id;
+      ..spotifyTrackID = widget.list.appleMusic ? null : track.id;
     draft.lyrics =
         (await openLyricsBrowser(
           context,

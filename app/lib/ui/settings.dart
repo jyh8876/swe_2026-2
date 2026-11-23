@@ -86,6 +86,40 @@ class _SettingsViewState extends State<SettingsView> {
                 _nav(tr('내 컬렉션 자랑하기'), () => showShareCard(context)),
               ]),
           ],
+          // Home layout (feedback 11/23): album slide by default; the others stay as choices here.
+          _section(tr('보기 방식'), [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: SizedBox(
+                width: double.infinity,
+                child: SegmentedButton<LibraryLayout>(
+                  showSelectedIcon: false,
+                  style: SegmentedButton.styleFrom(
+                    selectedBackgroundColor: t.accent,
+                    selectedForegroundColor: t.onAccent,
+                    foregroundColor: t.textSecondary,
+                    side: BorderSide(color: t.stroke),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                  segments: [
+                    for (final (l, icon) in [
+                      (LibraryLayout.carousel, Icons.view_carousel_outlined),
+                      (LibraryLayout.stack, Icons.layers_outlined),
+                      (LibraryLayout.grid, Icons.grid_view_outlined),
+                      (LibraryLayout.list, Icons.view_list_outlined),
+                    ])
+                      ButtonSegment(
+                        value: l,
+                        icon: Icon(icon, size: 20),
+                        label: Text(tr(l.label), style: const TextStyle(fontSize: 12)),
+                      ),
+                  ],
+                  selected: {s.libraryLayout},
+                  onSelectionChanged: (v) => model.updateSettings((x) => x.libraryLayout = v.first),
+                ),
+              ),
+            ),
+          ]),
           _section(tr('테마'), [
             ListTile(
               title: Text(tr('배경'), style: TextStyle(color: t.textPrimary)),
