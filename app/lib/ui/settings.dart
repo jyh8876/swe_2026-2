@@ -934,13 +934,6 @@ class _APIKeyEntryViewState extends State<APIKeyEntryView> {
                 ),
               ],
             ),
-          const SizedBox(height: 16),
-          Text(
-            tr(
-              'Google AI Studio(aistudio.google.com)에서 API 키를 만들 수 있어요. Gemini 앱 구독은 API 키가 아니에요. 가사는 Google로 전송되고 사용량은 내 계정에 청구돼요.',
-            ),
-            style: TextStyle(fontSize: 12, color: t.textTertiary),
-          ),
         ],
       ),
     );

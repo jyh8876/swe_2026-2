@@ -118,8 +118,14 @@ class _MainTabViewState extends State<MainTabView>
         model.selectedTab == AppTab.library &&
         model.libraryPath.isNotEmpty &&
         model.libraryPath.last is PlayerRoute;
-    // The player is full-screen: no tab bar, as in the prototype.
-    final showChrome = !onPlayer;
+    // The player and the add flow (노래 추가 → 커버 선택 → 번역 → 저장 완료) are full-screen: no tab bar.
+    final onAddFlow = model.selectedTab == AppTab.library &&
+        model.libraryPath.isNotEmpty &&
+        (model.libraryPath.last is AddRoute ||
+            model.libraryPath.last is CoverSelectRoute ||
+            model.libraryPath.last is TranslatingRoute ||
+            model.libraryPath.last is SavedRoute);
+    final showChrome = !onPlayer && !onAddFlow;
     final showMini = showChrome && model.nowPlaying != null;
 
     return PopScope(

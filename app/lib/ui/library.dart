@@ -984,9 +984,10 @@ class _EmptyHome extends StatelessWidget {
       const SizedBox(height: 4),
       const SpotifyShelf(),
       const SizedBox(height: 12),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
-        child: Text(tr('가사를 바로 불러올 수 있는 곡'), style: TextStyle(fontSize: 13, color: t.textTertiary)),
+      // 삭제한 문구("가사를 바로 불러올 수 있는 곡")가 있던 자리. 아래 목록 위치를 그대로 두려고 높이만 남겨요.
+      const Padding(
+        padding: EdgeInsets.fromLTRB(20, 0, 20, 4),
+        child: SizedBox(height: 19.5),
       ),
       CuratedShelvesView(shelves: model.shelves, onSelect: (e, _) => model.openAdd(e.trackKey)),
     ]);
@@ -1126,7 +1127,6 @@ class MoreShelves extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final model = context.model;
-    final t = context.theme;
     bool owned(ShelfEntry e) =>
         model.collection.songs.any((s) => TrackMatcher.matches(TrackKey(title: s.title, artist: s.artist), TrackKey(title: e.title, artist: e.artist)));
     final rows = <Widget>[
@@ -1137,9 +1137,10 @@ class MoreShelves extends StatelessWidget {
     if (rows.isEmpty) return const SizedBox();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const SizedBox(height: 12),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
-        child: Text(tr('가사를 바로 불러올 수 있는 곡'), style: TextStyle(fontSize: 13, color: t.textTertiary)),
+      // 삭제한 문구("가사를 바로 불러올 수 있는 곡")가 있던 자리. 아래 목록 위치를 그대로 두려고 높이만 남겨요.
+      const Padding(
+        padding: EdgeInsets.fromLTRB(20, 0, 20, 4),
+        child: SizedBox(height: 19.5),
       ),
       ...rows,
     ]);

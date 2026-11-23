@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart' hide Route;
+import 'package:flutter/services.dart';
 
 import '../app/app_model.dart';
 import '../app/i18n.dart';
@@ -34,82 +35,171 @@ class _AddSongViewState extends State<AddSongView> {
     super.dispose();
   }
 
-  bool get _synced => LRCParser.parse(_lyrics.text).type == LyricsType.synced;
-
   bool get _canContinue => _title.text.trim().isNotEmpty && _artist.text.trim().isNotEmpty && _lyrics.text.trim().isNotEmpty;
+
+  static const _info = Color(0xFF217CF9); // bg/informative/solid
+  static const _placeholder = Color(0xFFB0B3BA); // fg/placeholder
+
+  TextStyle _s(double size, FontWeight w, Color c, double ls, double h) =>
+      TextStyle(fontSize: size, fontWeight: w, color: c, letterSpacing: ls, height: h / size);
+
+  Widget _input(TextEditingController c, String hint) {
+    final t = context.theme;
+    final border = OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: t.stroke));
+    return TextField(
+      controller: c,
+      onChanged: (_) => setState(() {}),
+      autocorrect: false,
+      style: _s(14, FontWeight.w400, t.textPrimary, -0.21, 18),
+      decoration: InputDecoration(
+        isDense: true,
+        contentPadding: const EdgeInsets.all(12),
+        hintText: tr(hint),
+        hintStyle: _s(14, FontWeight.w400, _placeholder, -0.21, 18),
+        enabledBorder: border,
+        focusedBorder: border.copyWith(borderSide: BorderSide(color: t.textPrimary)),
+      ),
+    );
+  }
+
+  /// Figma "클립보드에서 붙여넣기": the bar at the bottom of the empty lyrics box.
+  Future<void> _paste() async {
+    final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text?.trim() ?? '';
+    if (!mounted || text.isEmpty) return;
+    setState(() => _lyrics.text = PageLyrics.lrc(text) ?? text);
+  }
 
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
     final model = context.model;
-    final appTarget = model.target;
-    return Scaffold(
-      appBar: AppBar(title: Text(tr('노래 추가')), centerTitle: true),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          SectionLabel(tr('제목')),
-          const SizedBox(height: 8),
-          OutlinedField(controller: _title, hint: '제목을 입력해주세요.', onChanged: (_) => setState(() {})),
-          const SizedBox(height: 18),
-          SectionLabel(tr('아티스트')),
-          const SizedBox(height: 8),
-          OutlinedField(controller: _artist, hint: '아티스트명을 입력해주세요.', onChanged: (_) => setState(() {})),
-          const SizedBox(height: 18),
-          // Figma 03 (377:28232) + feedback 11/19 #9: "가사" with the how-to link, the lyrics
-          // search chip once a title is in, the text area.
-          Row(children: [
-            SectionLabel(tr('가사')),
-            const Spacer(),
-            InkWell(
-              onTap: () => showLyricsGuide(context),
-              borderRadius: BorderRadius.circular(6),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Text(tr('가사는 어떻게 불러오나요?'), style: TextStyle(fontSize: 13, color: t.textSecondary)),
-                  Icon(Icons.chevron_right, size: 16, color: t.textSecondary),
-                ]),
+    final base = Theme.of(context);
+    final label = _s(12, FontWeight.w700, t.textTertiary, -0.24, 16);
+    final hasLyrics = _lyrics.text.trim().isNotEmpty;
+    final type = hasLyrics ? LRCParser.parse(_lyrics.text).type : null;
+    final showChip = _title.text.trim().isNotEmpty || _artist.text.trim().isNotEmpty;
+    // Figma 노래 추가 (SUIT, 12/14px text styles). The font applies to this screen only.
+    return Theme(
+      data: base.copyWith(
+        textTheme: base.textTheme.apply(fontFamily: 'SUIT'),
+        appBarTheme: base.appBarTheme.copyWith(
+          titleTextStyle: (base.appBarTheme.titleTextStyle ?? base.textTheme.titleLarge)?.copyWith(fontFamily: 'SUIT'),
+        ),
+      ),
+      child: Scaffold(
+        appBar: AppBar(title: Text(tr('노래 추가')), centerTitle: true),
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+          children: [
+            Text(tr('제목'), style: label),
+            const SizedBox(height: 6),
+            _input(_title, '제목을 입력해주세요.'),
+            const SizedBox(height: 16),
+            Text(tr('아티스트'), style: label),
+            const SizedBox(height: 6),
+            _input(_artist, '아티스트명을 입력해주세요.'),
+            const SizedBox(height: 16),
+            // "가사" + the how-to link, the lyrics search chip once a title or artist is in,
+            // then the 226px lyrics box with the clipboard bar inside.
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Text(tr('가사'), style: label),
+              InkWell(
+                onTap: () => showLyricsGuide(context),
+                child: Text(tr('가사는 어떻게 불러오나요?'),
+                    style: _s(12, FontWeight.w700, t.textPrimary, -0.24, 16).copyWith(decoration: TextDecoration.underline)),
+              ),
+            ]),
+            const SizedBox(height: 6),
+            if (showChip) ...[
+              LyricsSearchChip(title: _title.text, artist: _artist.text, onTap: _searchWeb),
+              const SizedBox(height: 6),
+            ],
+            Container(
+              height: 226,
+              decoration: BoxDecoration(border: Border.all(color: t.stroke), borderRadius: BorderRadius.circular(10)),
+              child: Column(children: [
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: TextField(
+                      controller: _lyrics,
+                      expands: true,
+                      maxLines: null,
+                      minLines: null,
+                      textAlignVertical: TextAlignVertical.top,
+                      autocorrect: false,
+                      onChanged: (_) => setState(() {}),
+                      style: _s(14, FontWeight.w400, t.textPrimary, -0.21, 18),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        filled: false,
+                        contentPadding: EdgeInsets.zero,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        hintText: tr('이곳에 가사를 붙여넣어 주세요.'),
+                        hintStyle: _s(14, FontWeight.w400, _placeholder, -0.21, 18),
+                      ),
+                    ),
+                  ),
+                ),
+                if (!hasLyrics)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+                    child: InkWell(
+                      onTap: _paste,
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(border: Border(top: BorderSide(color: t.stroke))),
+                        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          Icon(Icons.content_paste_rounded, size: 18, color: t.textPrimary),
+                          const SizedBox(width: 4),
+                          Text(tr('클립보드에서 붙여넣기'), style: _s(14, FontWeight.w700, t.textPrimary, -0.28, 18)),
+                        ]),
+                      ),
+                    ),
+                  ),
+              ]),
+            ),
+            // Timestamps such as [00:13.04] are recognised by themselves; no switch to set.
+            if (type != null) ...[
+              const SizedBox(height: 6),
+              Row(children: [
+                const Icon(Icons.check, size: 16, color: _info),
+                const SizedBox(width: 2),
+                Text(type == LyricsType.synced ? tr('싱크 가사를 인식했어요') : tr('가사를 인식했어요'),
+                    style: _s(12, FontWeight.w700, _info, -0.24, 16)),
+              ]),
+            ],
+            const SizedBox(height: 16),
+            Text(tr('번역 언어'), style: label),
+            const SizedBox(height: 6),
+            LanguageSelectField(
+              value: _target,
+              appTarget: model.target,
+              onChanged: (v) => setState(() => _target = v),
+            ),
+          ],
+        ),
+        bottomNavigationBar: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
+            child: SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton(
+                onPressed: _canContinue ? _toCover : null,
+                style: FilledButton.styleFrom(
+                  backgroundColor: t.accent,
+                  foregroundColor: t.onAccent,
+                  disabledBackgroundColor: t.surface,
+                  disabledForegroundColor: t.disabled,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: Text(tr('커버 이미지 선택하기'), style: _s(16, FontWeight.w700, _canContinue ? t.onAccent : t.disabled, -0.24, 22)),
               ),
             ),
-          ]),
-          const SizedBox(height: 6),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            if (_title.text.trim().isNotEmpty) LyricsSearchChip(title: _title.text, artist: _artist.text, onTap: _searchWeb),
-            ClipboardPasteChip(controller: _lyrics, onPasted: () => setState(() {})),
-          ]),
-          const SizedBox(height: 8),
-          OutlinedField(
-            controller: _lyrics,
-            hint: tr('이곳에 가사를 붙여넣어 주세요.'),
-            minLines: 10,
-            maxLines: null,
-            style: TextStyle(color: t.textPrimary, fontSize: 13, fontFamily: 'monospace', height: 1.4),
-            onChanged: (_) => setState(() {}),
           ),
-          // Timestamps such as [00:13.04] are recognised by themselves; no switch to set.
-          if (_synced) ...[
-            const SizedBox(height: 8),
-            Row(children: [
-              Icon(Icons.check_circle_rounded, size: 16, color: t.brandInk),
-              const SizedBox(width: 6),
-              Text(tr('싱크 가사를 인식했어요'), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: t.brandInk)),
-            ]),
-          ],
-          const SizedBox(height: 18),
-          SectionLabel(tr('번역 언어')),
-          const SizedBox(height: 8),
-          LanguageSelectField(
-            value: _target,
-            appTarget: appTarget,
-            onChanged: (v) => setState(() => _target = v),
-          ),
-        ],
-      ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-          child: PrimaryButton(tr('커버 이미지 선택하기'), onPressed: _canContinue ? _toCover : null),
         ),
       ),
     );

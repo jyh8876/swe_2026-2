@@ -10,6 +10,7 @@ import '../app/platform_services.dart';
 import '../app/theme.dart';
 import '../core/llm.dart';
 import 'components.dart';
+import 'gemini_key_guide_graphic.dart';
 
 // Figma "00 온보딩" (런처 아이콘 section) and "온보딩 - API 키 연결" (00-1 to 00-4):
 // start → sign in → what the AI does → how to get a Gemini key → paste it → connected.
@@ -192,11 +193,23 @@ class _Step extends StatelessWidget {
   final List<Widget> body;
   final Widget? primary;
   final Widget? secondary;
-  const _Step({required this.title, this.subtitle, this.body = const [], this.primary, this.secondary});
+
+  /// 제목(설명)과 본문 사이 간격.
+  final double bodyGap;
+
+  /// 하단 CTA 영역에 배경색 박스를 깔아요. 박스는 버튼 위 10px부터 화면 맨 아래까지라
+  /// 스크롤한 내용이 버튼과 겹치지 않고 그 위에서 잘려요.
+  final bool solidFooter;
+  const _Step({required this.title, this.subtitle, this.body = const [], this.primary, this.secondary, this.bodyGap = 28, this.solidFooter = false});
 
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
+    final footer = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (primary != null) Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 4), child: primary),
+      if (secondary != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: secondary),
+      const SizedBox(height: 12),
+    ]);
     return Scaffold(
       backgroundColor: t.background,
       appBar: AppBar(
@@ -209,6 +222,7 @@ class _Step extends StatelessWidget {
       ),
       body: SafeArea(
         top: false,
+        bottom: !solidFooter,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Expanded(
             child: ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 16), children: [
@@ -217,13 +231,18 @@ class _Step extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(subtitle!, style: TextStyle(fontSize: 14, color: t.textTertiary)),
               ],
-              const SizedBox(height: 28),
+              SizedBox(height: bodyGap),
               ...body,
             ]),
           ),
-          if (primary != null) Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 4), child: primary),
-          if (secondary != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: secondary),
-          const SizedBox(height: 12),
+          if (solidFooter)
+            Container(
+              color: t.background,
+              padding: EdgeInsets.only(top: 10, bottom: MediaQuery.paddingOf(context).bottom),
+              child: footer,
+            )
+          else
+            footer,
         ]),
       ),
     );
@@ -255,34 +274,50 @@ class OnboardingAIIntro extends StatelessWidget {
     return _Step(
       title: tr('가사 속 표현을\nAI가 알려줘요'),
       subtitle: tr('Google 무료 API 키를 연결해보세요'),
+      bodyGap: 64,
       body: [
         // The example card from Figma: a lyric line, its translation, and one explained expression.
         Container(
-          padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+          padding: const EdgeInsets.fromLTRB(19, 19, 19, 22),
           decoration: BoxDecoration(
-            color: t.surfaceRaised,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
+            // Figma 00-1 Preview Card: bg/layer/default(흰색) + stroke/neutral/subtle + 그림자 2/2/10.
+            // 라이트·다크 모두 화면 배경과 같은 색(bg/layer/default)이고, 테두리로 구분해요.
+            color: t.background,
+            border: Border.all(color: (t.isDark ? Colors.white : Colors.black).withValues(alpha: t.isDark ? 0.08 : 0.05)),
+            borderRadius: BorderRadius.circular(16),
+            // 위치·번짐은 Figma Drop shadow(2, 2, 10) 그대로. 다크는 검은 그림자가 안 보여서 밝은색(흰색)으로 깔아요.
+            boxShadow: [BoxShadow(color: (t.isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.1)), blurRadius: 10, offset: const Offset(2, 2))],
           ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(
-                child: Text("We're running late,\nbut that's on brand",
-                    style: TextStyle(fontSize: 15, height: 1.35, fontWeight: FontWeight.w500, color: t.textPrimary)),
+          // 글자 크기·줄 높이·자간은 Figma typography(title4 18/24, body2 14/18, body1·title5 16/22).
+          // Figma가 SUIT로 그려서 줄바꿈까지 맞추려면 이 카드 글자만 SUIT를 써요.
+          child: DefaultTextStyle.merge(
+            style: const TextStyle(fontFamily: 'SUIT'),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              SizedBox(
+                height: 48,
+                child: Row(children: [
+                  Expanded(
+                    child: Text("We're running late,\nbut that's on brand",
+                        style: TextStyle(fontSize: 18, height: 24 / 18, fontWeight: FontWeight.w700, letterSpacing: -0.36, color: t.textPrimary)),
+                  ),
+                  SizedBox(width: 38, height: 38, child: Center(child: Icon(Icons.star_rounded, color: t.brand, size: 21))),
+                ]),
               ),
-              Icon(Icons.star_rounded, color: t.brand, size: 22),
+              const SizedBox(height: 8),
+              Text(tr('늦었지만, 원래 우리 스타일이잖아'),
+                  style: TextStyle(fontSize: 14, height: 18 / 14, letterSpacing: -0.21, color: t.textSecondary)),
+              Padding(padding: const EdgeInsets.symmetric(vertical: 20), child: Divider(height: 1, thickness: 1, color: t.stroke)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(color: t.marker, borderRadius: BorderRadius.circular(4)),
+                child: Text('on brand',
+                    style: TextStyle(fontSize: 16, height: 22 / 16, fontWeight: FontWeight.w700, letterSpacing: -0.24, color: t.brandInk)),
+              ),
+              const SizedBox(height: 8),
+              Text(tr("'딱 나답다'는 뜻이에요. 나다운 행동을 가볍게 말할 때 써요."),
+                  style: TextStyle(fontSize: 16, height: 22 / 16, letterSpacing: -0.24, color: t.textSecondary)),
             ]),
-            const SizedBox(height: 8),
-            Text(tr('늦었지만, 원래 우리 스타일이잖아'), style: TextStyle(fontSize: 12, color: t.textSecondary)),
-            Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Divider(height: 1, color: t.stroke)),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(color: t.marker, borderRadius: BorderRadius.circular(4)),
-              child: Text('on brand', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: t.brandInk)),
-            ),
-            const SizedBox(height: 8),
-            Text(tr("'딱 나답다'는 뜻이에요. 나다운 행동을 가볍게 말할 때 써요."), style: TextStyle(fontSize: 13, height: 1.45, color: t.textSecondary)),
-          ]),
+          ),
         ),
       ],
       primary: PrimaryButton(tr('API 키 연결하기'), onPressed: onConnect),
@@ -324,7 +359,14 @@ class OnboardingKeyGuide extends StatelessWidget {
         );
     return _Step(
       title: tr('API 키를\n복사해 주세요'),
+      solidFooter: true,
       body: [
+        // 키 발급 과정 애니메이션. SUIT는 이 그래픽에만 적용해요.
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: ApiKeyGuideGraphic(background: t.background, fontFamily: 'SUIT'),
+        ),
+        const SizedBox(height: 20),
         step(1, tr('Google AI Studio에 로그인해요'), tr('이미 있는 Google 계정으로 사용할 수 있어요')),
         step(2, tr('목록에서 API 키를 복사해요'), tr("키가 없다면 'API 키 만들기'를 눌러요")),
         step(3, tr('키를 복사해서 돌아와요'), tr('다음 화면에서 붙여넣기만 하면 끝나요')),
@@ -339,6 +381,8 @@ class OnboardingKeyGuide extends StatelessWidget {
                 style: TextStyle(fontSize: 12, height: 1.5, color: t.textSecondary)),
           ]),
         ),
+        // 스크롤 끝에서 박스가 하단 버튼에 붙지 않도록 64px 여백.
+        const SizedBox(height: 64),
       ],
       primary: PrimaryButton(tr('Google AI Studio 열기'), icon: Icons.north_east, onPressed: () => _openStudio(context)),
       secondary: _textAction(context, tr('이미 키가 있어요'), onHaveKey),

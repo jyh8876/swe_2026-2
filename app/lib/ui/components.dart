@@ -585,7 +585,7 @@ class LanguageSelectField extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.theme;
     return Material(
-      color: t.surface,
+      color: t.surfaceRaised,
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
@@ -594,10 +594,11 @@ class LanguageSelectField extends StatelessWidget {
           if (picked != null) onChanged(picked.isEmpty ? null : picked);
         },
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          padding: const EdgeInsets.all(12),
           child: Row(children: [
-            Expanded(child: Text(_label(value), style: TextStyle(fontSize: 15, color: t.textPrimary))),
-            Icon(Icons.keyboard_arrow_down, color: t.textSecondary),
+            Expanded(child: Text(_label(value), style: TextStyle(fontSize: 14, letterSpacing: -0.21, height: 18 / 14, color: t.textPrimary))),
+            const SizedBox(width: 8),
+            Icon(Icons.keyboard_arrow_down, size: 20, color: t.textPrimary),
           ]),
         ),
       ),
