@@ -1,18 +1,20 @@
 import 'dart:async';
 import 'dart:math';
-import 'dart:ui';
 
 import 'package:flutter/material.dart' hide Route;
 import 'package:flutter/services.dart';
 
 import '../app/app_model.dart';
+import '../app/i18n.dart';
 import '../app/platform_services.dart';
 import '../app/theme.dart';
-import '../core/lyrics.dart';
 import '../core/models.dart';
 import '../core/playback.dart';
 import 'components.dart';
 import 'line_detail.dart';
+import 'player_controls.dart';
+import 'library.dart' show askDelete;
+import 'song_actions.dart';
 
 /// FG-06 Player · Lyrics, following the UI prototype (Figma 06 플레이어 · 가사 v2):
 /// dark drifting backdrop, lyrics that follow the current line until the user scrolls,
@@ -20,7 +22,8 @@ import 'line_detail.dart';
 /// Requirements: RQ-4, RQ-10, RQ-13, SSRD 3.1.1 modes, DCR-4, DCR-6, DCR-7.
 class PlayerView extends StatefulWidget {
   final String songID;
-  const PlayerView({super.key, required this.songID});
+  final bool openTiming;
+  const PlayerView({super.key, required this.songID, this.openTiming = false});
   @override
   State<PlayerView> createState() => _PlayerViewState();
 }
@@ -29,8 +32,7 @@ enum _Mode { linkedSynced, linkedPlain, studyOnly }
 
 class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
   late ListenSession _session = ListenSession(songID: widget.songID);
-  late final AnimationController _drift = AnimationController(vsync: this, duration: const Duration(seconds: 28));
-  late final AnimationController _zoom = AnimationController(vsync: this, duration: const Duration(milliseconds: 180));
+  late final AnimationController _drift = AnimationController(vsync: this, duration: const Duration(seconds: 240));
   late final Timer _ticker;
   late AppModel _model;
   final _scroll = ScrollController();
@@ -38,18 +40,36 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
   int? _lastIndex;
   bool _following = true;
   bool _programmaticScroll = false;
-  double? _scrub;
-  int? _snapIndex;
+  int? _scrubLine;
   bool _goldBurst = false;
+
+  /// After the user scrolls the lyrics, following resumes once they leave them alone this long
+  /// (as in Spotify's and Apple Music's lyrics).
+  static const resumeAfter = Duration(seconds: 3);
+  Timer? _resume;
+  bool _userScroll = false;
+
+  /// Tap to sync: writing line times by tapping as each line starts.
+  TapRecorder? _rec;
+  DateTime? _recFirstTap;
 
   String get id => widget.songID;
 
   @override
   void initState() {
     super.initState();
+    // Only the current-line change rebuilds the lyrics; the controls run their own clock.
     _ticker = Timer.periodic(const Duration(milliseconds: 100), (_) {
-      if (mounted) setState(() {});
+      if (!mounted) return;
+      final song = _model.collection.song(id);
+      if (song != null && _currentIndex(_model, song, _model.collection.linesFor(id)) != _lastIndex) setState(() {});
     });
+    if (widget.openTiming) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final song = _model.collection.song(id);
+        if (mounted && song != null) _timing(_model, song, _model.collection.linesFor(id));
+      });
+    }
   }
 
   @override
@@ -59,15 +79,15 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
     if (MediaQuery.of(context).disableAnimations) {
       _drift.stop();
     } else if (!_drift.isAnimating) {
-      _drift.repeat(reverse: true);
+      _drift.repeat();
     }
   }
 
   @override
   void dispose() {
     _ticker.cancel();
+    _resume?.cancel();
     _drift.dispose();
-    _zoom.dispose();
     _scroll.dispose();
     _recordLater(_session);
     super.dispose();
@@ -75,27 +95,16 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
 
   // ── Derived state ──
 
-  bool _isLinked(AppModel model, Song song) {
-    final snap = model.nowPlaying;
-    return snap != null && TrackMatcher.matches(song.trackKey, snap.track);
-  }
-
+  /// Linked while the music app plays this song, or right after a seek the app has not confirmed.
   _Mode _mode(AppModel model, Song song) {
-    if (!_isLinked(model, song)) return _Mode.studyOnly;
+    if (model.positionOf(song) == null) return _Mode.studyOnly;
     return song.lyricsType == LyricsType.synced ? _Mode.linkedSynced : _Mode.linkedPlain;
   }
 
-  SyncEngine _sync(AppModel model, Song song) {
-    final e = SyncEngine(offset: song.offset);
-    if (_isLinked(model, song) && model.nowPlaying != null) e.update(model.nowPlaying!);
-    return e;
-  }
-
-  double _duration(AppModel model, Song song, List<LyricLine> lines) {
-    final d = song.duration ?? (_isLinked(model, song) ? model.nowPlaying?.track.duration : null);
-    if (d != null && d > 0) return d;
-    final last = lines.lastWhere((l) => l.start != null, orElse: () => LyricLine(songID: id, index: 0, start: 0, text: ''));
-    return (last.start ?? 0) + 5;
+  int? _currentIndex(AppModel model, Song song, List<LyricLine> lines) {
+    if (song.lyricsType != LyricsType.synced) return null;
+    final p = model.positionOf(song);
+    return p == null ? null : SyncEngine.lineIndex(p - song.offset, lines);
   }
 
   // ── Build ──
@@ -105,15 +114,15 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
     final model = context.model;
     final song = model.collection.song(id);
     if (song == null) {
-      return const Scaffold(
+      return Scaffold(
         backgroundColor: PlayerPalette.background,
-        body: Center(child: Text('노래를 찾을 수 없어요', style: TextStyle(color: PlayerPalette.subtle))),
+        body: Center(child: Text(tr('노래를 찾을 수 없어요'), style: TextStyle(color: PlayerPalette.subtle))),
       );
     }
     final lines = model.collection.linesFor(id);
     final mode = _mode(model, song);
-    final engine = _sync(model, song);
-    final current = mode == _Mode.linkedSynced ? engine.currentLineIndex(lines) : null;
+    // While recording, the list follows the line to tap, not the playhead.
+    final current = mode == _Mode.linkedSynced && _rec == null ? _currentIndex(model, song, lines) : null;
     _onCurrentChanged(current, lines);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -125,9 +134,21 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
           SafeArea(
             child: Column(children: [
               _header(model, song, lines),
-              if (mode == _Mode.studyOnly) _studyOnlyNote(song),
-              Expanded(child: _lyrics(model, lines, current, mode)),
-              _transport(model, song, lines, engine, mode),
+              if (_rec != null)
+                _recordingNote(lines)
+              else if (mode == _Mode.studyOnly)
+                _studyOnlyNote(song)
+              else if (model.tapSynced(song))
+                _tapSyncNote(model),
+              if (model.translationSkipped(id)) _skippedNote(model),
+              Expanded(child: _lyrics(model, song, lines, current, mode)),
+              Container(
+                decoration: const BoxDecoration(border: Border(top: BorderSide(color: PlayerPalette.line))),
+                padding: const EdgeInsets.fromLTRB(21, 5, 21, 12),
+                child: _rec != null
+                    ? _recordButton(model, song, lines)
+                    : PlaybackControls(songID: id, onScrub: (p) => _onScrub(song, lines, p), onSeek: (p) => _onSeek(song, lines, p)),
+              ),
             ]),
           ),
           if (_goldBurst) _goldOverlay(),
@@ -141,7 +162,7 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
       height: 72,
       child: Row(children: [
         IconButton(
-          tooltip: '홈으로 돌아가기',
+          tooltip: tr('홈으로 돌아가기'),
           onPressed: () => model.pop(),
           icon: const Icon(Icons.chevron_left_rounded, size: 30, color: PlayerPalette.fg),
         ),
@@ -172,29 +193,172 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
           ]),
         ),
         IconButton(
-          tooltip: '더보기',
+          tooltip: tr('더보기'),
           onPressed: () => _menu(model, song, lines),
-          icon: const Icon(Icons.more_horiz_rounded, color: PlayerPalette.fg),
+          icon: const Icon(Icons.more_vert_rounded, color: PlayerPalette.fg),
         ),
         const SizedBox(width: 8),
       ]),
     );
   }
 
-  /// DCR-7: study-only state, stated once and quietly.
+  /// DCR-7: study-only state, stated once and quietly. Synced lyrics follow a tap on the line
+  /// being heard; plain lyrics can get their times by tapping along.
   Widget _studyOnlyNote(Song song) {
     final synced = song.lyricsType == LyricsType.synced;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(21, 0, 21, 4),
-      child: Row(children: [
-        const Icon(Icons.menu_book_rounded, size: 14, color: PlayerPalette.placeholder),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(synced ? '가사 공부 모드 · 재생을 누르면 데모로 싱크를 볼 수 있어요' : '가사 공부 모드 · 싱크 정보가 없는 가사예요',
-              style: const TextStyle(fontSize: 12, color: PlayerPalette.placeholder)),
-        ),
-      ]),
+    return _note(
+      synced ? Icons.touch_app_outlined : Icons.menu_book_rounded,
+      synced ? tr('듣고 있는 줄을 탭하면 가사가 따라와요') : tr('가사 공부 모드 · 싱크 정보가 없는 가사예요'),
+      [if (!synced) _noteAction(tr('싱크 만들기'), () => _startRecording(song, _model.collection.linesFor(id)))],
     );
+  }
+
+  Widget _tapSyncNote(AppModel model) => _note(
+        Icons.touch_app_outlined,
+        tr('탭 싱크 · 어긋나면 듣고 있는 줄을 탭하세요'),
+        [_noteAction(tr('끄기'), model.stopTapSync)],
+      );
+
+  Widget _recordingNote(List<LyricLine> lines) => _note(
+        Icons.fiber_manual_record_rounded,
+        tr('줄이 시작될 때마다 탭하세요 · {0}/{1}', [_rec!.next, lines.length]),
+        [
+          if (_rec!.next > 0) _noteAction(tr('되돌리기'), _undoMark),
+          _noteAction(tr('취소'), _cancelRecording),
+        ],
+      );
+
+  Widget _note(IconData icon, String text, List<Widget> actions) => Padding(
+        padding: const EdgeInsets.fromLTRB(21, 0, 9, 4),
+        child: Row(children: [
+          Icon(icon, size: 14, color: PlayerPalette.placeholder),
+          const SizedBox(width: 6),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 12, color: PlayerPalette.placeholder))),
+          ...actions,
+        ]),
+      );
+
+  Widget _noteAction(String label, VoidCallback onPressed) => TextButton(
+        onPressed: onPressed,
+        style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: const Size(0, 32), visualDensity: VisualDensity.compact),
+        child: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: PlayerPalette.fg)),
+      );
+
+  /// The song is already in the target language, so there are no translations to show.
+  Widget _skippedNote(AppModel model) => Padding(
+        padding: const EdgeInsets.fromLTRB(21, 0, 21, 4),
+        child: Row(children: [
+          const Icon(Icons.translate_rounded, size: 14, color: PlayerPalette.placeholder),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(tr('가사가 이미 {0}(이)라서 해석을 생략했어요.', [model.targetFor(id).nativeName]), style: const TextStyle(fontSize: 12, color: PlayerPalette.placeholder)),
+          ),
+        ]),
+      );
+
+  // ── Seeking: the lyrics move to the target at once, before the music app reports back ──
+
+  /// While dragging the seek bar, the list glides to the line under the playhead.
+  void _onScrub(Song song, List<LyricLine> lines, double? position) {
+    if (position == null) {
+      _scrubLine = null;
+      return;
+    }
+    final i = SyncEngine.lineIndex(position - song.offset, lines);
+    if (i == null || i == _scrubLine) return;
+    _scrubLine = i;
+    if (!_following) setState(() => _following = true);
+    _placeList(i);
+  }
+
+  void _onSeek(Song song, List<LyricLine> lines, double position) {
+    final i = SyncEngine.lineIndex(position - song.offset, lines);
+    if (!_following) setState(() => _following = true);
+    if (i != null && i != _lastIndex) {
+      _lastIndex = i;
+      _placeList(i);
+      setState(() {});
+    }
+  }
+
+  /// Tap to sync: the tapped line is the one being heard, so the lyrics run from its time.
+  void _tapSyncFrom(Song song, List<LyricLine> lines, LyricLine line) {
+    final target = max(0.0, line.start! + song.offset);
+    HapticFeedback.selectionClick();
+    _model.startTapSync(song, target);
+    _onSeek(song, lines, target);
+  }
+
+  // ── Tap to sync: recording line times ──
+
+  void _startRecording(Song song, List<LyricLine> lines) {
+    if (lines.isEmpty) return;
+    _model.stopTapSync();
+    setState(() {
+      _rec = TapRecorder(lines.length);
+      _recFirstTap = null;
+      _following = true;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _placeList(0));
+  }
+
+  /// The music app's position when it plays the song, otherwise seconds since the first tap.
+  double _recordTime(Song song) {
+    final live = _model.isNowPlaying(song) ? _model.positionOf(song) : null;
+    if (live != null) return live;
+    final now = DateTime.now();
+    _recFirstTap ??= now;
+    return now.difference(_recFirstTap!).inMicroseconds / 1e6;
+  }
+
+  void _mark(Song song, List<LyricLine> lines) {
+    final rec = _rec;
+    if (rec == null) return;
+    HapticFeedback.selectionClick();
+    final t = _recordTime(song);
+    setState(() => rec.mark(t));
+    if (!rec.done) {
+      _placeList(rec.next);
+      return;
+    }
+    _model.saveTapTimings(id, rec.starts, now: rec.starts.last);
+    setState(() => _rec = null);
+    _lastIndex = null;
+    showMessage(context, tr('싱크를 저장했어요. 어긋나면 듣고 있는 줄을 탭하세요.'));
+  }
+
+  void _undoMark() {
+    final rec = _rec;
+    if (rec == null) return;
+    setState(rec.undo);
+    if (rec.next == 0) _recFirstTap = null;
+    _placeList(rec.next);
+  }
+
+  void _cancelRecording() => setState(() => _rec = null);
+
+  Widget _recordButton(AppModel model, Song song, List<LyricLine> lines) {
+    final first = _rec!.next == 0;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: SizedBox(
+        width: double.infinity,
+        height: 64,
+        child: FilledButton.icon(
+          style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: const Color(0xFF15171C), shape: const StadiumBorder()),
+          onPressed: () => _mark(song, lines),
+          icon: const Icon(Icons.touch_app_rounded),
+          label: Text(first ? tr('첫 줄 시작') : tr('다음 줄 시작'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        ),
+      ),
+    );
+  }
+
+  void _seekToLine(Song song, List<LyricLine> lines, LyricLine line) {
+    final target = max(0.0, line.start! + song.offset);
+    HapticFeedback.selectionClick();
+    _model.seekSong(song, target);
+    _onSeek(song, lines, target);
   }
 
   // ── Lyrics ──
@@ -226,17 +390,39 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
     ).whenComplete(() => _programmaticScroll = false);
   }
 
-  void _setFollowing(bool on) {
-    if (on == _following) return;
+  void _setFollowing(bool on, {double at = 0.42}) {
+    _resume?.cancel();
+    if (on == _following) {
+      if (on && _lastIndex != null) _placeList(_lastIndex!, at: at);
+      return;
+    }
     setState(() => _following = on);
-    if (on && _lastIndex != null) _placeList(_lastIndex!);
+    if (on && _lastIndex != null) _placeList(_lastIndex!, at: at);
   }
 
-  Widget _lyrics(AppModel model, List<LyricLine> lines, int? current, _Mode mode) {
+  /// The toggle shows only for songs that have a reading (발음) to show.
+  bool _hasReadings(AppModel model) {
+    if (model.translationSkipped(id)) return false;
+    final target = model.targetFor(id).code;
+    return model.collection.linesFor(id).any((l) => (model.collection.readingText(id, l.index, target) ?? '').isNotEmpty);
+  }
+
+  Widget _lyrics(AppModel model, Song song, List<LyricLine> lines, int? current, _Mode mode) {
     return Stack(children: [
       NotificationListener<ScrollNotification>(
         onNotification: (n) {
-          if (n is ScrollStartNotification && n.dragDetails != null && !_programmaticScroll) _setFollowing(false);
+          if (n is ScrollStartNotification && n.dragDetails != null && !_programmaticScroll) {
+            _userScroll = true;
+            _setFollowing(false);
+          }
+          // The user let go (and any fling settled): back to the playing line after a quiet moment.
+          if (n is ScrollEndNotification && _userScroll) {
+            _userScroll = false;
+            if (_following || _rec != null) return false;
+            _resume = Timer(resumeAfter, () {
+              if (mounted && !_following) _setFollowing(true);
+            });
+          }
           return false;
         },
         child: ShaderMask(
@@ -248,15 +434,22 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
             stops: [0, 0.14, 0.78, 1],
           ).createShader(r),
           blendMode: BlendMode.dstIn,
+          // Every line is laid out (not a lazy list), so any line, however far away, can be
+          // scrolled to: the current line and "현재 줄로 이동" need the line's position.
           child: LayoutBuilder(
-            builder: (context, c) => ListView(
+            builder: (context, c) => SingleChildScrollView(
               controller: _scroll,
               padding: EdgeInsets.fromLTRB(21, c.maxHeight * 0.3, 13, c.maxHeight * 0.5),
-              children: [for (final line in lines) _lyricRow(model, line, current, mode)],
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [for (final line in lines) _lyricRow(model, song, lines, line, current, mode)],
+              ),
             ),
           ),
         ),
       ),
+      if (_hasReadings(model))
+        Positioned(top: 0, right: 0, child: _ReadingToggle(on: model.readingOn(id), onChanged: (v) => model.setReading(id, v))),
       if (!_following && current != null)
         Positioned(
           left: 0,
@@ -268,10 +461,10 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
               shape: const StadiumBorder(),
               child: InkWell(
                 customBorder: const StadiumBorder(),
-                onTap: () => _setFollowing(true),
-                child: const Padding(
+                onTap: () => _setFollowing(true, at: 0.5),
+                child: Padding(
                   padding: EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                  child: Text('현재 줄로 이동', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF15171C))),
+                  child: Text(tr('현재 줄로 이동'), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF15171C))),
                 ),
               ),
             ),
@@ -280,11 +473,19 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
     ]);
   }
 
-  Widget _lyricRow(AppModel model, LyricLine line, int? current, _Mode mode) {
-    // In study-only or plain mode every line is readable at full strength.
-    final active = mode != _Mode.linkedSynced || line.index == current;
-    final target = model.target.code;
-    final translation = model.collection.translationText(id, line.index, target);
+  Widget _lyricRow(AppModel model, Song song, List<LyricLine> lines, LyricLine line, int? current, _Mode mode) {
+    // In study-only or plain mode every line is readable at full strength; while recording, the
+    // line to tap next stands out.
+    final rec = _rec;
+    final active = rec != null ? line.index == rec.next : mode != _Mode.linkedSynced || line.index == current;
+    final target = model.targetFor(id).code;
+    final translation = model.translationSkipped(id) ? null : model.collection.translationText(id, line.index, target);
+    final reading = model.readingOn(id) && !model.translationSkipped(id) ? model.collection.readingText(id, line.index, target) : null;
+    // While the song plays, a tap moves the music to that line; tapping the current line (or a
+    // long press) opens the explanation.
+    final seekable = mode == _Mode.linkedSynced && line.start != null && (model.isPlayingSong(song) || model.tapSynced(song));
+    // With nothing to follow, a tap on a synced line starts tap to sync from it.
+    final tapSync = mode == _Mode.studyOnly && line.start != null && song.lyricsType == LyricsType.synced;
     final failed = model.collection.translation(id, line.index, target)?.outcome == Outcome.failed;
     final saved = model.collection.isSaved(id, line.index);
 
@@ -295,11 +496,39 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
         Expanded(
           child: Semantics(
             button: true,
-            hint: '탭하면 세부 설명을 볼 수 있어요',
+            hint: tapSync
+                ? tr('듣고 있는 줄이면 탭해서 가사를 맞춰요 · 길게 누르면 세부 설명')
+                : seekable
+                    ? tr('탭하면 이 줄로 이동해요 · 길게 누르면 세부 설명')
+                    : tr('탭하면 세부 설명을 볼 수 있어요'),
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () => _openLine(line.index, mode),
+              // While recording, only the big button marks lines.
+              onTap: rec != null
+                  ? null
+                  : () => tapSync
+                      ? _tapSyncFrom(song, lines, line)
+                      : seekable && line.index != current
+                          ? _seekToLine(song, lines, line)
+                          : _openLine(line.index, mode),
+              onLongPress: rec != null ? null : () => _openLine(line.index, mode),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                // 발음 sits right above the original line, small, like ruby text.
+                if (reading != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: AnimatedDefaultTextStyle(
+                      duration: const Duration(milliseconds: 200),
+                      style: TextStyle(
+                        fontFamily: AppTheme.fontFamilyOverride,
+                        fontSize: 12,
+                        height: 16 / 12,
+                        letterSpacing: -0.12,
+                        color: active ? PlayerPalette.subtle : PlayerPalette.placeholder,
+                      ),
+                      child: Text(reading),
+                    ),
+                  ),
                 AnimatedDefaultTextStyle(
                   duration: const Duration(milliseconds: 200),
                   style: TextStyle(
@@ -312,28 +541,53 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
                   ),
                   child: Text(line.text),
                 ),
-                if (model.settings.showTranslation) ...[
-                  const SizedBox(height: 4),
-                  if (translation != null)
-                    AnimatedDefaultTextStyle(
-                      duration: const Duration(milliseconds: 200),
-                      style: TextStyle(
-                          fontFamily: AppTheme.fontFamilyOverride,
-                          fontSize: 14,
-                          height: 18 / 14,
-                          letterSpacing: -0.21,
-                          color: active ? PlayerPalette.subtle : PlayerPalette.placeholder),
-                      child: Text(translation),
-                    )
-                  else if (failed)
-                    GestureDetector(
-                      onTap: () => model.startTranslation(id),
-                      child: const Text('번역 실패 — 다시 시도',
-                          style: TextStyle(fontSize: 12, color: PlayerPalette.placeholder, decoration: TextDecoration.underline, decorationColor: PlayerPalette.placeholder)),
-                    )
-                  else if (model.isTranslating(id))
-                    const Text('번역 중…', style: TextStyle(fontSize: 12, color: PlayerPalette.placeholder)),
-                ],
+                // The translation is always shown (feedback 11/19 #8).
+                // A translation fades and grows in the moment it arrives.
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 260),
+                    curve: Curves.easeOutCubic,
+                    alignment: Alignment.topLeft,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 360),
+                      switchInCurve: Curves.easeOutCubic,
+                      transitionBuilder: (c, a) => FadeTransition(
+                        opacity: a,
+                        child: SlideTransition(position: Tween(begin: const Offset(0, 0.35), end: Offset.zero).animate(a), child: c),
+                      ),
+                      child: translation != null
+                          ? Padding(
+                              key: const ValueKey('t'),
+                              padding: const EdgeInsets.only(top: 4),
+                              child: AnimatedDefaultTextStyle(
+                                duration: const Duration(milliseconds: 200),
+                                style: TextStyle(
+                                    fontFamily: AppTheme.fontFamilyOverride,
+                                    fontSize: 14,
+                                    height: 18 / 14,
+                                    letterSpacing: -0.21,
+                                    color: active ? PlayerPalette.subtle : PlayerPalette.placeholder),
+                                child: Text(translation),
+                              ),
+                            )
+                          : failed
+                              ? Padding(
+                                  key: const ValueKey('f'),
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: GestureDetector(
+                                    onTap: () => model.startTranslation(id),
+                                    child: Text(tr('번역 실패 — 다시 시도'),
+                                        style: const TextStyle(fontSize: 12, color: PlayerPalette.placeholder, decoration: TextDecoration.underline, decorationColor: PlayerPalette.placeholder)),
+                                  ),
+                                )
+                              : model.isTranslating(id)
+                                  ? Padding(
+                                      key: const ValueKey('w'),
+                                      padding: const EdgeInsets.only(top: 4),
+                                      child: Text(tr('번역 중…'), style: const TextStyle(fontSize: 12, color: PlayerPalette.placeholder)),
+                                    )
+                                  : const SizedBox(key: ValueKey('n')),
+                    ),
+                  ),
               ]),
             ),
           ),
@@ -344,8 +598,11 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
           height: 36,
           child: IconButton(
             padding: EdgeInsets.zero,
-            tooltip: saved ? '저장한 문장에서 빼기' : '문장 저장',
-            onPressed: () => model.toggleSaved(id, line.index),
+            tooltip: saved ? tr('저장한 문장에서 빼기') : tr('문장 저장'),
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              model.toggleSaved(id, line.index);
+            },
             icon: AnimatedSwitcher(
               duration: const Duration(milliseconds: 180),
               transitionBuilder: (c, a) => ScaleTransition(scale: a, child: c),
@@ -374,184 +631,83 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
 
   // ── Transport (RQ-4) ──
 
-  Widget _transport(AppModel model, Song song, List<LyricLine> lines, SyncEngine engine, _Mode mode) {
-    final synced = song.lyricsType == LyricsType.synced;
-    final duration = _duration(model, song, lines);
-    final position = (_scrub ?? engine.position() ?? 0).clamp(0.0, duration);
-    final isPlaying = mode != _Mode.studyOnly && (model.nowPlaying?.isPlaying ?? false);
-    final source = mode == _Mode.studyOnly ? null : model.source;
-    final canSeek = synced && (mode == _Mode.studyOnly || (source?.capabilities.contains(SourceCapability.seek) ?? false));
-
-    void togglePlay() {
-      if (mode == _Mode.studyOnly) {
-        if (synced) model.playDemo(song);
-        return;
-      }
-      if (isPlaying) {
-        source?.pause();
-      } else {
-        if (position >= duration - 0.2) source?.seek(0);
-        source?.play();
-      }
-    }
-
-    void jump(double delta) {
-      if (mode == _Mode.studyOnly) return;
-      source?.seek((position + delta).clamp(0.0, duration));
-      _setFollowing(true);
-    }
-
-    return Container(
-      decoration: const BoxDecoration(border: Border(top: BorderSide(color: PlayerPalette.line))),
-      padding: const EdgeInsets.fromLTRB(21, 5, 21, 12),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        _SeekBar(
-          duration: duration,
-          position: position,
-          enabled: canSeek,
-          zoom: _zoom,
-          snapIndex: _snapIndex,
-          segments: [
-            for (final l in lines)
-              if (l.start != null && model.collection.isSaved(id, l.index)) (l.index, l.start!, l.end ?? l.start! + 5),
-          ],
-          onScrubStart: () {
-            HapticFeedback.selectionClick();
-            _zoom.forward();
-            _setFollowing(true);
-          },
-          onScrub: (raw, threshold) {
-            // The playhead catches on saved lines.
-            int? hit;
-            var best = double.infinity;
-            for (final l in lines) {
-              if (l.start == null || !model.collection.isSaved(id, l.index)) continue;
-              final end = max(l.end ?? l.start! + 5, l.start! + threshold);
-              if (raw >= l.start! - threshold && raw <= end) {
-                final d = (raw - l.start!).abs();
-                if (d < best) {
-                  best = d;
-                  hit = l.index;
-                }
-              }
-            }
-            if (hit != _snapIndex && hit != null) HapticFeedback.lightImpact();
-            setState(() {
-              _snapIndex = hit;
-              _scrub = hit != null ? lines.firstWhere((l) => l.index == hit).start : raw;
-            });
-          },
-          onScrubEnd: () {
-            final target = _scrub;
-            _zoom.reverse();
-            setState(() {
-              _scrub = null;
-              _snapIndex = null;
-            });
-            if (target == null) return;
-            if (mode == _Mode.studyOnly) {
-              model.playDemo(song);
-              model.source?.seek(target);
-            } else {
-              source?.seek(target);
-            }
-          },
-        ),
-        Padding(
-          padding: const EdgeInsets.only(top: 2),
-          child: Row(children: [
-            Text(position.mmss, style: _timeStyle),
-            const Spacer(),
-            Text('-${max(0.0, duration - position).mmss}', style: _timeStyle),
-          ]),
-        ),
-        const SizedBox(height: 10),
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          _ctrl(Icons.replay_5_rounded, '5초 뒤로', mode == _Mode.studyOnly ? null : () => jump(-5)),
-          const SizedBox(width: 44),
-          Semantics(
-            button: true,
-            label: isPlaying ? '일시정지' : '재생',
-            excludeSemantics: true,
-            child: Material(
-              color: Colors.white.withValues(alpha: 0.1),
-              shape: const CircleBorder(),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: synced || mode != _Mode.studyOnly ? togglePlay : null,
-                child: SizedBox(
-                  width: 60,
-                  height: 60,
-                  child: Icon(isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 30, color: PlayerPalette.fg),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 44),
-          _ctrl(Icons.forward_5_rounded, '5초 앞으로', mode == _Mode.studyOnly ? null : () => jump(5)),
-        ]),
-      ]),
-    );
-  }
-
-  static const _timeStyle = TextStyle(fontSize: 12, height: 16 / 12, letterSpacing: -0.18, color: PlayerPalette.subtle, fontFeatures: [FontFeature.tabularFigures()]);
-
-  Widget _ctrl(IconData icon, String label, VoidCallback? onTap) => IconButton(
-        tooltip: label,
-        onPressed: onTap,
-        iconSize: 28,
-        color: PlayerPalette.fg,
-        disabledColor: PlayerPalette.line,
-        icon: Icon(icon),
-      );
-
   /// "이 줄 다시 듣기": jump to the line and play (starts the demo link in study-only mode).
   void _replayLine(int index) {
     final song = _model.collection.song(id);
     final line = _model.collection.line(id, index);
     if (song == null || line?.start == null) return;
-    if (!_isLinked(_model, song)) _model.playDemo(song);
-    final target = _sync(_model, song).seekTarget(line!) ?? max(0.0, line.start! + song.offset);
-    _model.source?.seek(target);
-    _model.source?.play();
     _setFollowing(true);
+    _seekToLine(song, _model.collection.linesFor(id), line!);
+    if (_model.isNowPlaying(song) && !_model.isPlayingSong(song)) _model.togglePlaySong(song);
   }
 
-  // ── Menu: timing, wrong lyrics, retranslate, conquer (DCR-4, RQ-10, RQ-13) ──
+  // ── Song settings (Notion 11/19): edit, cover, retranslate, report, sync, quiz; conquer (RQ-13) ──
 
   Future<void> _menu(AppModel model, Song song, List<LyricLine> lines) async {
-    final canConquer = model.canMarkConquered(id) || _session.linesReached.length >= max(1, (lines.length * 0.9).floor());
     final action = await showActionSheet<String>(
       context,
-      title: '엔진: ${EngineFactory.label(model.settings.engine)}',
-      message: '타이밍 조절 (현재 ${song.offset >= 0 ? '+' : ''}${song.offset.toStringAsFixed(1)}초)',
+      title: tr('엔진: {0}', [EngineFactory.label(model.settings.engine)]),
       actions: [
-        const SheetAction('가사 0.5초 빠르게', 'faster', icon: Icons.remove),
-        const SheetAction('가사 0.5초 느리게', 'slower', icon: Icons.add),
-        if (song.offset != 0) const SheetAction('타이밍 초기화', 'reset', icon: Icons.restart_alt),
-        const SheetAction('가사가 이상해요?', 'wrong', icon: Icons.help_outline),
-        const SheetAction('현재 엔진으로 다시 번역', 'retranslate', icon: Icons.translate),
-        if (song.isConquered)
-          const SheetAction('정복 취소', 'unconquer', icon: Icons.undo)
-        else
-          SheetAction('이 노래 정복!', 'conquer', icon: Icons.emoji_events_outlined, enabled: canConquer),
+        // Feedback 11/19 #5–7: seven items; conquering follows the quiz, wrong lyrics are edited.
+        SheetAction(tr('노래·가사 수정'), 'edit', icon: Icons.edit_outlined),
+        SheetAction(tr('앨범 커버 수정'), 'cover', icon: Icons.album_outlined),
+        SheetAction(tr('현재 엔진으로 다시 번역'), 'retranslate', icon: Icons.translate),
+        SheetAction(tr('싱크 맞추기'), 'timing', icon: Icons.av_timer),
+        SheetAction(tr('이 노래 퀴즈 풀기'), 'quiz', icon: Icons.quiz_outlined, enabled: lines.isNotEmpty),
+        SheetAction(tr('AI 번역 신고하기'), 'report', icon: Icons.flag_outlined),
+        // Figma 248:1806: "노래 삭제" in red at the end of the player menu.
+        SheetAction(tr('노래 삭제'), 'delete', icon: Icons.delete_outline, destructive: true),
       ],
     );
+    if (!mounted) return;
     switch (action) {
-      case 'faster':
-        model.setOffset(id, song.offset - SyncEngine.offsetStep);
-      case 'slower':
-        model.setOffset(id, song.offset + SyncEngine.offsetStep);
-      case 'reset':
-        model.setOffset(id, 0);
-      case 'wrong':
-        model.push(SearchRoute('${song.title} ${song.artist}'));
+      case 'edit':
+        await showEditSong(context, song);
+      case 'cover':
+        await showCoverPicker(context, song);
+      case 'report':
+        await showReportTranslation(context, id);
+      case 'timing':
+        await _timing(model, song, lines);
+      case 'quiz':
+        openSongQuiz(context, song);
+      case 'delete':
+        if (await askDelete(context, song) != null) model.pop();
       case 'retranslate':
         model.retranslate(id);
-      case 'unconquer':
-        model.setConquered(id, false);
-      case 'conquer':
-        _conquer();
+    }
+  }
+
+  /// Timing: shift the lyrics by half seconds (the sheet stays open for repeated steps), reset,
+  /// or tap along to make a sync (RQ-10).
+  Future<void> _timing(AppModel model, Song song, List<LyricLine> lines) async {
+    while (mounted) {
+      final s = model.collection.song(id) ?? song;
+      final action = await showActionSheet<String>(
+        context,
+        title: tr('싱크 맞추기'),
+        message: tr('타이밍 조절 (현재 {0}{1}초)', [s.offset >= 0 ? '+' : '', s.offset.toStringAsFixed(1)]),
+        actions: [
+          SheetAction(tr('가사 0.5초 빠르게'), 'faster', icon: Icons.remove),
+          SheetAction(tr('가사 0.5초 느리게'), 'slower', icon: Icons.add),
+          if (s.offset != 0) SheetAction(tr('타이밍 초기화'), 'reset', icon: Icons.restart_alt),
+          SheetAction(tr('탭으로 싱크 만들기'), 'record', icon: Icons.touch_app_outlined),
+        ],
+      );
+      switch (action) {
+        case 'faster':
+          model.setOffset(id, s.offset - SyncEngine.offsetStep);
+        case 'slower':
+          model.setOffset(id, s.offset + SyncEngine.offsetStep);
+        case 'reset':
+          model.setOffset(id, 0);
+          return;
+        case 'record':
+          _startRecording(s, lines);
+          return;
+        default:
+          return;
+      }
     }
   }
 
@@ -572,7 +728,7 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
   Future<void> _suggestConquer() async {
     if (!mounted) return;
     final ok = await confirmDialog(context,
-        title: '이 노래를 정복한 것 같아요!', message: '세 번 넘게 끝까지 들으며 공부했어요. 골드 LP로 바꿀까요?', confirm: '정복 완료', cancel: '아직이에요');
+        title: tr('이 노래를 정복한 것 같아요!'), message: tr('세 번 넘게 끝까지 들으며 공부했어요. 골드 LP로 바꿀까요?'), confirm: tr('정복 완료'), cancel: tr('아직이에요'));
     if (ok) _conquer();
   }
 
@@ -611,7 +767,7 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
               ),
             ),
             const SizedBox(height: 40),
-            const Text('골드 LP 획득!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: gold)),
+            Text(tr('골드 LP 획득!'), style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: gold)),
           ]),
         ),
       ),
@@ -619,42 +775,18 @@ class _PlayerViewState extends State<PlayerView> with TickerProviderStateMixin {
   }
 }
 
-/// Slowly drifting, blurred grey blobs behind the player (prototype `pDrift`).
-class _Backdrop extends AnimatedWidget {
-  const _Backdrop({required Animation<double> animation}) : super(listenable: animation);
+/// Soft lights that glide slowly across the dark player. No blur filter and no bounce: each light
+/// follows its own long closed path (periods of 80, 120 and 240 s share one 240 s loop), so the
+/// background moves continuously, never jumps, and costs only three gradient fills per frame.
+class _Backdrop extends StatelessWidget {
+  final Animation<double> animation;
+  const _Backdrop({required this.animation});
 
   @override
   Widget build(BuildContext context) {
-    final v = Curves.easeInOut.transform((listenable as Animation<double>).value);
-    Widget blob(Alignment a, Color c, double r) => Align(
-          alignment: a,
-          child: Container(
-            width: r,
-            height: r,
-            decoration: BoxDecoration(shape: BoxShape.circle, gradient: RadialGradient(colors: [c, c.withValues(alpha: 0)])),
-          ),
-        );
-    return ClipRect(
+    return RepaintBoundary(
       child: Stack(fit: StackFit.expand, children: [
-        const ColoredBox(color: PlayerPalette.background),
-        Transform.translate(
-          offset: Offset(lerpDouble(-12, 12, v)!, lerpDouble(-16, 16, v)!),
-          child: Transform.rotate(
-            angle: v * 8 * pi / 180,
-            child: Transform.scale(
-              scale: 1 + 0.06 * v,
-              child: ImageFiltered(
-                imageFilter: ImageFilter.blur(sigmaX: 48, sigmaY: 48),
-                child: Stack(fit: StackFit.expand, children: [
-                  blob(const Alignment(-0.64, -0.76), const Color(0xFF5E5E5E), 420),
-                  blob(const Alignment(0.64, -0.56), const Color(0xFF464646), 340),
-                  blob(const Alignment(0.56, 0.64), const Color(0xFF333333), 460),
-                  blob(const Alignment(-0.7, 0.56), const Color(0xFF3B3B3B), 380),
-                ]),
-              ),
-            ),
-          ),
-        ),
+        CustomPaint(painter: _LightsPainter(animation)),
         const DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x1F0A0C10), Color(0x6B0A0C10)]),
@@ -665,134 +797,90 @@ class _Backdrop extends AnimatedWidget {
   }
 }
 
-/// Seek bar from the prototype: saved lines are mint segments with star pins; while scrubbing
-/// the track thickens and the playhead snaps onto saved lines.
-class _SeekBar extends StatelessWidget {
-  final double duration;
-  final double position;
-  final bool enabled;
-  final Animation<double> zoom;
-  final int? snapIndex;
-  final List<(int, double, double)> segments;
-  final VoidCallback onScrubStart;
-  final void Function(double raw, double threshold) onScrub;
-  final VoidCallback onScrubEnd;
+class _LightsPainter extends CustomPainter {
+  final Animation<double> t;
+  _LightsPainter(this.t) : super(repaint: t);
 
-  const _SeekBar({
-    required this.duration,
-    required this.position,
-    required this.enabled,
-    required this.zoom,
-    required this.snapIndex,
-    required this.segments,
-    required this.onScrubStart,
-    required this.onScrub,
-    required this.onScrubEnd,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, c) {
-      final w = c.maxWidth;
-      void at(Offset p) => onScrub((p.dx / w).clamp(0.0, 1.0) * duration, 10 / w * duration);
-      return Semantics(
-        slider: true,
-        label: '재생 위치',
-        value: '${position.mmss} / ${duration.mmss}',
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onHorizontalDragStart: enabled
-              ? (d) {
-                  onScrubStart();
-                  at(d.localPosition);
-                }
-              : null,
-          onHorizontalDragUpdate: enabled ? (d) => at(d.localPosition) : null,
-          onHorizontalDragEnd: enabled ? (_) => onScrubEnd() : null,
-          onTapDown: enabled
-              ? (d) {
-                  onScrubStart();
-                  at(d.localPosition);
-                }
-              : null,
-          onTapUp: enabled ? (_) => onScrubEnd() : null,
-          child: AnimatedBuilder(
-            animation: zoom,
-            builder: (_, _) => CustomPaint(
-              size: Size(w, 56),
-              painter: _SeekPainter(
-                duration: duration,
-                position: position,
-                zoom: Curves.easeOut.transform(zoom.value),
-                segments: segments,
-                snapIndex: snapIndex,
-              ),
-            ),
-          ),
-        ),
-      );
-    });
-  }
-}
-
-class _SeekPainter extends CustomPainter {
-  final double duration, position, zoom;
-  final List<(int, double, double)> segments;
-  final int? snapIndex;
-  _SeekPainter({required this.duration, required this.position, required this.zoom, required this.segments, required this.snapIndex});
-
-  static const zMax = 1.5;
+  static const _tau = 2 * pi;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final p = duration > 0 ? (position / duration).clamp(0.0, 1.0) : 0.0;
-    final z = 1 + (zMax - 1) * zoom;
-    final trackW = w * z;
-    final dx = p * w * (1 - z); // zoom around the playhead
-    final h = 8 + 6 * zoom;
-    const cy = 36.0;
-    double x(double sec) => dx + sec / duration * trackW;
-
-    canvas.save();
-    canvas.clipRect(Rect.fromLTWH(-21, 0, w + 42, size.height));
-    final track = RRect.fromRectAndRadius(Rect.fromLTWH(dx, cy - h / 2, trackW, h), Radius.circular(h / 2));
-    canvas.drawRRect(track, Paint()..color = PlayerPalette.line);
-    for (final (i, s, e) in segments) {
-      final sh = i == snapIndex ? h * 1.7 : h;
-      final r = RRect.fromRectAndRadius(Rect.fromLTRB(x(s), cy - sh / 2, max(x(s) + 2, x(e)), cy + sh / 2), Radius.circular(sh / 2));
-      canvas.drawRRect(r, Paint()..color = PlayerPalette.brand);
-    }
-    canvas.restore();
-
-    // Star pins above saved lines; they fade out while zoomed.
-    if (zoom < 1) {
-      final pin = Paint()..color = PlayerPalette.brand.withValues(alpha: 1 - zoom);
-      for (final (_, s, e) in segments) {
-        canvas.drawPath(_star(Offset((s + e) / 2 / duration * w, 12 - 4 * zoom), 6), pin);
-      }
+    canvas.drawRect(Offset.zero & size, Paint()..color = PlayerPalette.background);
+    final w = size.width, h = size.height, v = t.value;
+    void light(double fx, double fy, double radius, Color c) {
+      final center = Offset(fx * w, fy * h);
+      final r = radius * w;
+      final shader = RadialGradient(colors: [c, c.withValues(alpha: c.a * 0.45), c.withValues(alpha: 0)], stops: const [0, 0.5, 1]).createShader(Rect.fromCircle(center: center, radius: r));
+      canvas.drawCircle(center, r, Paint()..shader = shader);
     }
 
-    // Playhead.
-    final ph = p * w;
-    final lineH = 32 * (1 + 0.5 * zoom);
-    final head = RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(ph, cy), width: 3, height: lineH), const Radius.circular(2));
-    canvas.drawRRect(head.inflate(2), Paint()..color = const Color(0x38000000));
-    canvas.drawRRect(head, Paint()..color = Colors.white);
-  }
-
-  Path _star(Offset c, double r) {
-    final path = Path();
-    for (var i = 0; i < 10; i++) {
-      final rr = i.isEven ? r : r * 0.45;
-      final a = -pi / 2 + i * pi / 5;
-      final pt = c + Offset(cos(a) * rr, sin(a) * rr);
-      i == 0 ? path.moveTo(pt.dx, pt.dy) : path.lineTo(pt.dx, pt.dy);
-    }
-    return path..close();
+    light(0.5 + 0.38 * sin(_tau * 3 * v), 0.30 + 0.22 * cos(_tau * 2 * v + 1.0), 0.95, const Color(0x2EFFFFFF));
+    light(0.5 + 0.42 * cos(_tau * 2 * v + 2.0), 0.66 + 0.24 * sin(_tau * 3 * v + 0.5), 1.0, const Color(0x2A8A8F99));
+    light(0.5 + 0.30 * sin(_tau * v + 4.0), 0.50 + 0.34 * cos(_tau * 2 * v + 3.0), 0.8, PlayerPalette.brand.withValues(alpha: 0.10));
   }
 
   @override
-  bool shouldRepaint(_SeekPainter o) =>
-      o.position != position || o.zoom != zoom || o.duration != duration || o.snapIndex != snapIndex || o.segments.length != segments.length;
+  bool shouldRepaint(_LightsPainter old) => old.t != t;
+}
+
+/// Seek bar from the prototype: saved lines are mint segments with star pins; while scrubbing
+/// the track thickens and the playhead snaps onto saved lines.
+
+/// 발음 on/off, floating at the top right of the lyrics (feedback 11/19 #8): ON shows the reading,
+/// the original and the translation; OFF the original and the translation. Kept per song.
+/// Figma "06 플레이어 · 가사 v2" › 독음 토글: a label and a small black/white switch. The label
+/// names what a tap does: "발음 보기" while hidden, "발음 가리기" while shown.
+class _ReadingToggle extends StatelessWidget {
+  final bool on;
+  final ValueChanged<bool> onChanged;
+  const _ReadingToggle({required this.on, required this.onChanged});
+
+  static const _white = Color(0xFFF3F4F6);
+  static const _offTrack = Color(0xFF2B2E35);
+  static const _offStroke = Color(0xFF393D46);
+
+  @override
+  Widget build(BuildContext context) {
+    final label = on ? tr('발음 가리기') : tr('발음 보기');
+    final duration = MediaQuery.of(context).disableAnimations ? Duration.zero : const Duration(milliseconds: 180);
+    return Semantics(
+      button: true,
+      label: label,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onChanged(!on);
+        },
+        child: Padding(
+          // Figma: 20 px from the edge, 4 px above and below; the padding also widens the tap area.
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: -0.24, color: _white)),
+            const SizedBox(width: 8),
+            AnimatedContainer(
+              duration: duration,
+              curve: Curves.easeOut,
+              width: 28,
+              height: 16,
+              // The 1 px border plus 1 px padding keeps the 12 px knob 2 px from the edge, as in Figma.
+              padding: const EdgeInsets.all(1),
+              decoration: BoxDecoration(
+                color: on ? _white : _offTrack,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: on ? _white : _offStroke, width: 1),
+              ),
+              child: AnimatedAlign(
+                duration: duration,
+                curve: Curves.easeOut,
+                alignment: on ? Alignment.centerRight : Alignment.centerLeft,
+                child: Container(width: 12, height: 12, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.black)),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
 }

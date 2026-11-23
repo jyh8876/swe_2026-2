@@ -1,7 +1,5 @@
-import 'dart:convert';
 import 'dart:math';
 
-import 'package:http/http.dart' as http;
 
 import 'models.dart';
 
@@ -28,6 +26,14 @@ class LyricsDocument {
 
 /// LRC parsing (SSRD A.III `parseLRC`, RQ-6).
 class LRCParser {
+  /// Writes lines back as text: "[mm:ss.xx]text" for timed lines, the text alone otherwise.
+  static String format(List<LyricLine> lines) => lines.map((l) {
+        final s = l.start;
+        if (s == null) return l.text;
+        final m = s ~/ 60, sec = s - m * 60;
+        return '[${m.toString().padLeft(2, '0')}:${sec.toStringAsFixed(2).padLeft(5, '0')}]${l.text}';
+      }).join('\n');
+
   /// Text in which at least this share of non-empty lines starts with a time tag is synced (RQ-6).
   static const syncedThreshold = 0.8;
 
@@ -78,7 +84,7 @@ class LRCParser {
     return LyricsDocument(lines, LyricsType.synced);
   }
 
-  /// Only leading tags count; inline tags are rare in LRCLIB.
+  /// Only leading tags count; inline tags are rare in LRC files.
   static List<double> timeTags(String line) {
     final result = <double>[];
     var cursor = 0;
@@ -122,7 +128,17 @@ class TrackNormalizer {
   static final _alnum = RegExp(r'[\p{L}\p{N}\p{M}]', unicode: true);
 
   /// Lowercases, strips bracketed tags, "feat." clauses, noise words, and punctuation.
+  static final _normalized = <String, String>{};
+
+  /// Memoised: the matcher runs on every rebuild with the same few titles and artists.
   static String normalize(String s) {
+    final hit = _normalized[s];
+    if (hit != null) return hit;
+    if (_normalized.length > 4000) _normalized.clear();
+    return _normalized[s] = _normalize(s);
+  }
+
+  static String _normalize(String s) {
     var t = s.toLowerCase();
     t = t.replaceAll(RegExp(r'[\(\[\{][^\)\]\}]*[\)\]\}]'), ' ');
     t = t.replaceAll(RegExp(r'\b(feat\.?|ft\.?|featuring)\s.*$'), ' ');
@@ -136,6 +152,13 @@ class TrackNormalizer {
     }
     return buf.toString().split(' ').where((w) => w.isNotEmpty).join(' ');
   }
+
+  /// The title as lyrics sites usually store it: without "(feat. …)", "[Live]" or " - Remastered 2011".
+  static String cleanTitle(String title) => title
+      .replaceAll(RegExp(r'\s*[\(\[][^\)\]]*[\)\]]'), '')
+      .replaceAll(RegExp(r'\s+-\s+.*$'), '')
+      .replaceAll(RegExp(r'\s+(feat\.?|ft\.?|featuring)\s.*$', caseSensitive: false), '')
+      .trim();
 
   /// "Coldplay/Coldplay", "A, B & C" → first artist (SIR-7).
   static String primaryArtist(String artist) => artist.split(RegExp(r'[/,&;]')).first.trim();
@@ -254,73 +277,70 @@ abstract class LyricsProvider {
   Future<LyricsCandidate?> lyrics(TrackKey track);
 }
 
-enum LyricsErrorKind { offline, http, decoding }
+/// A web search for a song's lyrics as an LRC file. The app fetches no lyrics itself: the user
+/// opens this search, copies the lyrics (timed LRC when found) and pastes them on the add screen.
+class LyricsWebSearch {
+  /// Appended to every search so that time-tagged LRC lyrics come up first.
+  static const suffix = '.lrc';
 
-class LyricsError implements Exception {
-  final LyricsErrorKind kind;
-  final int? status;
-  const LyricsError(this.kind, [this.status]);
-  @override
-  String toString() => 'LyricsError($kind, $status)';
-}
+  /// "Jay Chou 晴天 .lrc": primary artist, title, then [suffix]; blanks dropped.
+  static String query({required String title, String artist = ''}) =>
+      [TrackNormalizer.primaryArtist(artist.trim()), title.trim(), suffix].where((s) => s.isNotEmpty).join(' ');
 
-/// LRCLIB adapter (SIR-7). Plain HTTPS GET, no key; polite User-Agent; results cached in memory.
-class LRCLIBClient implements LyricsProvider {
-  final http.Client _client;
-  final Uri baseURL;
-  final String userAgent;
-  final _cache = <String, List<LyricsCandidate>>{};
+  static Uri url({required String title, String artist = ''}) =>
+      Uri.https('www.google.com', '/search', {'q': query(title: title, artist: artist)});
 
-  LRCLIBClient({http.Client? client, Uri? baseURL, this.userAgent = 'LyricsTranslator/0.1 (https://github.com/team9/lyricstranslator)'})
-      : _client = client ?? http.Client(),
-        baseURL = baseURL ?? Uri.parse('https://lrclib.net/api');
-
-  @override
-  Future<List<LyricsCandidate>> search(String query) async {
-    final key = 'search:${query.toLowerCase()}';
-    final hit = _cache[key];
-    if (hit != null) return hit;
-    final body = await _get(baseURL.replace(path: '${baseURL.path}/search', queryParameters: {'q': query}));
-    if (body is! List) throw const LyricsError(LyricsErrorKind.decoding);
-    final results = body.map((e) => LyricsCandidate.fromJson(Map<String, dynamic>.from(e as Map))).toList();
-    _cache[key] = results;
-    return results;
-  }
-
-  @override
-  Future<LyricsCandidate?> lyrics(TrackKey track) async {
-    final q = <String, String>{
-      'track_name': track.title,
-      'artist_name': TrackNormalizer.primaryArtist(track.artist),
-      if (track.album != null) 'album_name': track.album!,
-      if (track.duration != null) 'duration': '${track.duration!.round()}',
-    };
-    try {
-      final body = await _get(baseURL.replace(path: '${baseURL.path}/get', queryParameters: q));
-      return LyricsCandidate.fromJson(Map<String, dynamic>.from(body as Map));
-    } on LyricsError catch (e) {
-      if (e.kind == LyricsErrorKind.http && e.status == 404) return null;
-      rethrow;
-    }
-  }
-
-  Future<Object?> _get(Uri url) async {
-    http.Response r;
-    try {
-      r = await _client.get(url, headers: {'User-Agent': userAgent}).timeout(const Duration(seconds: 10));
-    } catch (_) {
-      throw const LyricsError(LyricsErrorKind.offline);
-    }
-    if (r.statusCode < 200 || r.statusCode >= 300) throw LyricsError(LyricsErrorKind.http, r.statusCode);
-    try {
-      return jsonDecode(utf8.decode(r.bodyBytes));
-    } catch (_) {
-      throw const LyricsError(LyricsErrorKind.decoding);
-    }
+  /// Typing in the in-app browser's bar: a web address opens as is, anything else is searched.
+  static Uri urlFor(String input) {
+    final t = input.trim();
+    final asUrl = RegExp(r'^(https?://)?[\w-]+(\.[\w-]+)+(/\S*)?$', caseSensitive: false);
+    if (asUrl.hasMatch(t) && !t.contains(' ')) return Uri.parse(t.startsWith('http') ? t : 'https://$t');
+    return Uri.https('www.google.com', '/search', {'q': t});
   }
 }
 
-/// Offline provider backed by fixtures; used by tests and the demo mode.
+/// Finds lyrics in the text of a web page (in-app browser, "가져오기"). The user chose the page;
+/// what is found goes into the add screen on the phone and nowhere else.
+class PageLyrics {
+  static final _timed = RegExp(r'^\s*(\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\])+.*$');
+  static final _tag = RegExp(r'^\s*\[(ti|ar|al|by|offset|length|re|ve|au):.*\]\s*$', caseSensitive: false);
+
+  /// Minimum number of time-tagged lines for a page to count as an LRC.
+  static const minTimedLines = 5;
+
+  /// The LRC lines of [pageText] (tags such as [ti:] kept when they lead the block), or null when
+  /// the page has fewer than [minTimedLines] time-tagged lines. Pages that show several LRCs
+  /// (versions, translations) give the longest run of consecutive timed lines.
+  static String? lrc(String pageText) {
+    final lines = pageText.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
+    var best = <String>[], run = <String>[];
+    var gap = 0;
+    void close() {
+      if (run.where(_timed.hasMatch).length > best.where(_timed.hasMatch).length) best = run;
+      run = [];
+      gap = 0;
+    }
+
+    for (final raw in lines) {
+      final l = raw.trimRight();
+      if (_timed.hasMatch(l) || (run.isEmpty && _tag.hasMatch(l)) || (run.isNotEmpty && _tag.hasMatch(l) && run.every(_tag.hasMatch))) {
+        run.add(l.trimLeft());
+        gap = 0;
+      } else if (run.isNotEmpty && l.trim().isEmpty && gap < 1) {
+        // One blank line inside an LRC is kept out but does not end it.
+        gap++;
+      } else if (run.isNotEmpty) {
+        close();
+      }
+    }
+    close();
+    final timed = best.where(_timed.hasMatch).length;
+    return timed >= minTimedLines ? best.join('\n') : null;
+  }
+}
+
+/// Local provider backed by fixtures: the demo song in demo mode and tests, nothing in the
+/// shipped app (lyrics are pasted, not fetched).
 class StaticLyricsProvider implements LyricsProvider {
   final List<LyricsCandidate> candidates;
   const StaticLyricsProvider(this.candidates);
@@ -341,36 +361,6 @@ class StaticLyricsProvider implements LyricsProvider {
       if (TrackMatcher.matches(c.trackKey, track)) return c;
     }
     return null;
-  }
-}
-
-/// LRCLIB, plus the bundled demo song so the app is usable offline and in review.
-class DemoAwareLyricsProvider implements LyricsProvider {
-  final LyricsProvider remote;
-  final LyricsProvider demo;
-  DemoAwareLyricsProvider({LyricsProvider? remote})
-      : remote = remote ?? LRCLIBClient(),
-        demo = StaticLyricsProvider(DemoContent.candidates);
-
-  @override
-  Future<List<LyricsCandidate>> search(String query) async {
-    final local = await demo.search(query);
-    try {
-      return [...local, ...await remote.search(query)];
-    } catch (_) {
-      if (local.isNotEmpty) return local;
-      rethrow;
-    }
-  }
-
-  @override
-  Future<LyricsCandidate?> lyrics(TrackKey track) async {
-    final hit = await demo.lyrics(track);
-    if (hit != null) return hit;
-    final exact = await remote.lyrics(track);
-    if (exact != null) return exact;
-    final ranked = TrackMatcher.rank(await remote.search('${track.title} ${track.artist}'), track);
-    return ranked.isEmpty ? null : ranked.first;
   }
 }
 

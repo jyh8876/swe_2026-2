@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_model.dart';
+import '../app/i18n.dart';
 import '../app/theme.dart';
 import '../core/models.dart';
 import 'components.dart';
+import 'covers.dart';
 import 'line_detail.dart';
 
 /// FG-08 Phrase box (RQ-12, RQ-13 statistics). No share/export in MVP (FG-08 note).
@@ -39,19 +41,23 @@ class _PhraseBoxViewState extends State<PhraseBoxView> {
     final t = context.theme;
     final phrases = _sorted(model);
     return Scaffold(
-      appBar: AppBar(title: const Text('문장 저장함')),
-      body: ListView(padding: EdgeInsets.fromLTRB(20, 20, 20, model.nowPlaying != null ? 104 : 20), children: [
+      appBar: AppBar(title: Text(tr('문장 저장함'))),
+      body: ListView(padding: const EdgeInsets.fromLTRB(20, 20, 20, 20), children: [
         _statsCard(model),
         const SizedBox(height: 16),
-        Row(children: [_chip('최신순', _Sort.newest), const SizedBox(width: 8), _chip('곡별', _Sort.bySong)]),
+        Row(children: [_chip(tr('최신순'), _Sort.newest), const SizedBox(width: 8), _chip(tr('곡별'), _Sort.bySong)]),
         const SizedBox(height: 16),
         if (phrases.isEmpty)
           Padding(
-            padding: const EdgeInsets.only(top: 24),
-            child: Text('가사 옆의 ☆를 눌러 마음에 드는 문장을 모아보세요.', style: TextStyle(fontSize: 15, color: t.textSecondary)),
+            padding: const EdgeInsets.only(top: 56),
+            child: Column(children: [
+              Icon(Icons.star_outline_rounded, size: 40, color: t.textTertiary),
+              const SizedBox(height: 12),
+              Text(keepWords(tr('가사 옆의 ☆를 눌러 마음에 드는 문장을 모아보세요.')), textAlign: TextAlign.center, style: TextStyle(fontSize: 15, height: 1.45, color: t.textSecondary)),
+            ]),
           )
         else
-          for (final p in phrases) Padding(padding: const EdgeInsets.only(bottom: 12), child: _card(model, p)),
+          for (final (i, p) in phrases.indexed) FadeIn(index: i, child: Padding(padding: const EdgeInsets.only(bottom: 12), child: _card(model, p))),
       ]),
     );
   }
@@ -59,18 +65,20 @@ class _PhraseBoxViewState extends State<PhraseBoxView> {
   Widget _statsCard(AppModel model) {
     final t = context.theme;
     final s = model.collection.stats;
-    Widget stat(String v, String label) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(v, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: t.textPrimary)),
-          const SizedBox(height: 2),
-          Text(label, style: TextStyle(fontSize: 12, color: t.textSecondary)),
-        ]);
+    Widget stat(String v, String label) => Expanded(
+          child: Column(children: [
+            Text(v, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: t.textPrimary)),
+            const SizedBox(height: 2),
+            Text(label, style: TextStyle(fontSize: 12, color: t.textSecondary)),
+          ]),
+        );
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(color: t.surface, borderRadius: BorderRadius.circular(12)),
-      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        stat('${s.phrases}', '저장한 문장'),
-        stat('${s.songs}', '곡'),
-        stat('${s.conquered}', '정복'),
+      child: Row(children: [
+        stat('${s.phrases}', tr('저장한 문장')),
+        stat('${s.songs}', tr('곡')),
+        stat('${s.conquered}', tr('정복')),
       ]),
     );
   }
@@ -97,7 +105,7 @@ class _PhraseBoxViewState extends State<PhraseBoxView> {
     final t = context.theme;
     final line = model.collection.line(p.songID, p.index);
     final song = model.collection.song(p.songID);
-    final translation = model.collection.translationText(p.songID, p.index, model.target.code);
+    final translation = model.collection.translationText(p.songID, p.index, model.targetFor(p.songID).code);
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: () => showLineDetail(context, songID: p.songID, index: p.index, canReplay: false),
@@ -113,14 +121,14 @@ class _PhraseBoxViewState extends State<PhraseBoxView> {
           const SizedBox(height: 8),
           Divider(color: t.stroke, height: 1),
           Row(children: [
-            SizedBox(width: 22, height: 22, child: CoverArt(path: song?.coverPath, radius: 3)),
+            SizedBox(width: 22, height: 22, child: song?.coverPath != null ? CoverArt(path: song!.coverPath, radius: 3) : GeneratedCover(seed: p.songID, radius: 3)),
             const SizedBox(width: 8),
             Expanded(
-              child: Text('${song?.title ?? '삭제된 노래'} · ${song?.artist ?? ''}',
+              child: Text('${song?.title ?? tr('삭제된 노래')} · ${song?.artist ?? ''}',
                   maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: t.textSecondary)),
             ),
             IconButton(
-              tooltip: '저장 취소',
+              tooltip: tr('저장 취소'),
               icon: Icon(Icons.star_rounded, color: t.brand),
               onPressed: () {
                 model.toggleSaved(p.songID, p.index);
@@ -128,9 +136,9 @@ class _PhraseBoxViewState extends State<PhraseBoxView> {
                   ..hideCurrentSnackBar()
                   ..showSnackBar(SnackBar(
                     duration: const Duration(seconds: 5),
-                    content: const Text('문장을 삭제했어요'),
+                    content: Text(tr('문장을 삭제했어요')),
                     action: SnackBarAction(
-                      label: '실행 취소',
+                      label: tr('실행 취소'),
                       onPressed: () {
                         if (!model.collection.isSaved(p.songID, p.index)) model.toggleSaved(p.songID, p.index);
                       },

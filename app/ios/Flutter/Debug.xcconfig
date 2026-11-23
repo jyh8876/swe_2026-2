@@ -1,1 +1,4 @@
 #include "Generated.xcconfig"
+// Default; override in Secrets.xcconfig (gitignored) with the iOS client's reversed ID.
+GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.unset
+#include? "Secrets.xcconfig"

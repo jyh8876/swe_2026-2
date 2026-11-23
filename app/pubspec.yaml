@@ -1,5 +1,5 @@
 name: lyrics_translator
-description: "DAY-OFF — learn a language with the songs you listen to (Android + iOS)."
+description: "Vinylo — learn a language with the songs you listen to (Android + iOS)."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 0.1.0+1
+version: 0.18.2+38
 
 environment:
   sdk: ^3.13.5
@@ -38,9 +38,15 @@ dependencies:
   shared_preferences: ^2.5.6
   path_provider: ^2.1.6
   flutter_secure_storage: ^11.2.0
+  google_sign_in: ^7.2.0
   image_picker: ^1.2.4
   file_picker: ^13.1.0
   share_plus: ^13.3.1
+  crypto: ^3.0.6
+  sign_in_with_apple: ^8.2.0
+  webview_flutter: ^4.14.1
+  # Direct for the iOS back/forward swipe in the lyrics browser (already pulled in by webview_flutter).
+  webview_flutter_wkwebview: ^3.27.2
 
 dev_dependencies:
   flutter_test:
@@ -52,6 +58,8 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  integration_test:
+    sdk: flutter
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -65,6 +73,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/curated_shelves.json
+    - assets/brand/
     - assets/onboarding/
 
   # To add assets to your application, add an assets section, like this:

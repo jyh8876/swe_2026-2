@@ -1,0 +1,32 @@
+# iOS compile check on a macOS runner. No signing and no upload: those need the
+# App Store Connect key and a distribution certificate, which are set up separately.
+name: iOS build
+
+on:
+  push:
+    branches: ['feature/**']
+    paths: ['app/**', '.github/workflows/ios-build.yml']
+  pull_request:
+    paths: ['app/**']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+
+      - run: flutter pub get
+
+      - run: flutter analyze
+
+      - run: flutter build ios --release --no-codesign

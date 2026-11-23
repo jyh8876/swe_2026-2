@@ -89,6 +89,12 @@ class Song {
   DateTime addedAt;
   String? curatedShelfID;
 
+  /// Translation language chosen for this song (0.14.0); null follows the app setting.
+  String? targetLanguage;
+
+  /// 발음 shown for this song (the player's floating toggle); null follows the app setting.
+  bool? showReading;
+
   Song({
     String? id,
     required this.title,
@@ -103,6 +109,8 @@ class Song {
     this.conqueredAt,
     DateTime? addedAt,
     this.curatedShelfID,
+    this.targetLanguage,
+    this.showReading,
   })  : id = id ?? newUUID(),
         addedAt = addedAt ?? DateTime.now();
 
@@ -125,6 +133,8 @@ class Song {
     _put(m, 'coverPath', coverPath);
     _put(m, 'conqueredAt', conqueredAt == null ? null : c.encode(conqueredAt!));
     _put(m, 'curatedShelfID', curatedShelfID);
+    _put(m, 'targetLanguage', targetLanguage);
+    _put(m, 'showReading', showReading);
     return m;
   }
 
@@ -142,6 +152,8 @@ class Song {
         conqueredAt: j['conqueredAt'] == null ? null : c.decode(j['conqueredAt']),
         addedAt: c.decode(j['addedAt']),
         curatedShelfID: j['curatedShelfID'] as String?,
+        targetLanguage: j['targetLanguage'] as String?,
+        showReading: j['showReading'] as bool?,
       );
 }
 
@@ -190,6 +202,10 @@ class Translation {
 
   /// Translated text. Null when the line was copied (already in the target language) or failed.
   final String? text;
+
+  /// 발음: how the original line sounds, written in the reader's script (Hangul for Korean).
+  /// Null when the engine gave none (older translations, or the line needs none).
+  final String? reading;
   final Outcome outcome;
   final DateTime createdAt;
 
@@ -200,6 +216,7 @@ class Translation {
     required this.engineID,
     required this.promptVersion,
     this.text,
+    this.reading,
     required this.outcome,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
@@ -215,6 +232,7 @@ class Translation {
       'createdAt': c.encode(createdAt),
     };
     _put(m, 'text', text);
+    _put(m, 'reading', reading);
     return m;
   }
 
@@ -225,6 +243,7 @@ class Translation {
         engineID: j['engineID'] as String,
         promptVersion: j['promptVersion'] as String,
         text: j['text'] as String?,
+        reading: j['reading'] as String?,
         outcome: _enumByName(Outcome.values, j['outcome'], Outcome.failed),
         createdAt: c.decode(j['createdAt']),
       );
@@ -367,11 +386,18 @@ class Language {
 
   static const korean = Language('ko', 'Korean', '한국어');
   static const english = Language('en', 'English', 'English');
+  static const chinese = Language('zh', 'Simplified Chinese', '中文');
   static const japanese = Language('ja', 'Japanese', '日本語');
+  static const german = Language('de', 'German', 'Deutsch');
+  static const french = Language('fr', 'French', 'Français');
   static const spanish = Language('es', 'Spanish', 'Español');
 
-  static const supported = [korean, english, japanese, spanish];
+  /// Translation targets offered in settings.
+  static const supported = [korean, english, chinese, japanese, german, french];
+
+  /// Languages the app interface is available in.
+  static const uiLanguages = [korean, english, chinese, japanese];
 
   static Language named(String code) =>
-      supported.firstWhere((l) => l.code == code, orElse: () => Language(code, code, code));
+      [...supported, spanish].firstWhere((l) => l.code == code, orElse: () => Language(code, code, code));
 }
