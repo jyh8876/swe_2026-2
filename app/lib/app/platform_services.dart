@@ -85,15 +85,20 @@ String maskSecret(String s) => s.length <= 8
 
 // ─────────────────────────────── Engines (Win-AGRE-4) ───────────────────────────────
 
-/// Downloads, verifies, and deletes the GGUF model (PR-9): Gemma 4 E2B, QAT q4_0 (3.35 GB).
+/// Downloads, verifies, and deletes the GGUF model (PR-9): vinylo-e2b-lyrics, Gemma 4 E2B fine-tuned for
+/// lyrics and quantized to 2 bits with QAT (0.98 GB, huggingface.co/jyh8876/vinylo-e2b-lyrics).
 /// The download resumes from a `.part` file, and the size is checked before it counts as installed.
 class ModelManager {
-  static const modelName = 'gemma-4-e2b';
-  static const fileName = 'gemma-4-E2B_q4_0-it.gguf';
-  static const approximateBytes = 3349516256;
-  static final url = Uri.parse(
-    'https://huggingface.co/google/gemma-4-E2B-it-qat-q4_0-gguf/resolve/main/$fileName',
-  );
+  static const modelName = 'vinylo-e2b-lyrics';
+  static const fileName = 'vinylo-e2b-lyrics-Q2_K-qat.gguf';
+  static const approximateBytes = 980080864;
+  // Pinned to the uploaded revision, so a later upload cannot change the file under a fixed size.
+  static const revision = '863dceb2577260ed93fd7f95e5096bfc9413d771';
+  static const sha256Hex = 'e55aa877b0322886bc4a1884e27f0cebfea39b94bd5a400edb8777d1bb6dcf6a';
+  static final url = Uri.parse('https://huggingface.co/jyh8876/vinylo-e2b-lyrics/resolve/$revision/$fileName');
+
+  /// Earlier on-device model (stock Gemma 4 E2B QAT q4_0, 3.35 GB): removed to give the space back.
+  static const _legacyFiles = ['gemma-4-E2B_q4_0-it.gguf', 'gemma-4-E2B_q4_0-it.gguf.part'];
   static late Directory baseDir;
 
   static File get modelFile => File('${baseDir.path}/Models/$fileName');
@@ -102,8 +107,18 @@ class ModelManager {
       modelFile.existsSync() && modelFile.lengthSync() == approximateBytes;
   static int get modelBytes => isInstalled ? modelFile.lengthSync() : 0;
 
-  /// llama.cpp is built into the Android app (arm64). iOS falls back to the demo engine for now.
-  static bool get isSupported => Platform.isAndroid;
+  /// llama.cpp: built into the Android app (arm64, CPU) and the vinylo_llama plugin on iOS (Metal).
+  static bool get isSupported => Platform.isAndroid || Platform.isIOS;
+
+  /// Deletes the previous model's files, if any (called once the base directory is known).
+  static void removeLegacy() {
+    for (final name in _legacyFiles) {
+      try {
+        final f = File('${baseDir.path}/Models/$name');
+        if (f.existsSync()) f.deleteSync();
+      } catch (_) {}
+    }
+  }
 
   static bool _cancel = false;
   static void cancelDownload() => _cancel = true;
@@ -135,10 +150,13 @@ class ModelManager {
       } finally {
         await sink.close();
       }
-      if (_partFile.lengthSync() != approximateBytes) {
-        throw const FileSystemException('size mismatch');
+      if (_partFile.lengthSync() != approximateBytes ||
+          '${await sha256.bind(_partFile.openRead()).first}' != sha256Hex) {
+        _partFile.deleteSync();
+        throw const FileSystemException('checksum mismatch');
       }
       _partFile.renameSync(modelFile.path);
+      await LocalLlama.excludeFromBackup(modelFile.path);
     } finally {
       client.close();
     }
@@ -154,56 +172,24 @@ class ModelManager {
   }
 }
 
-/// Platform channel to llama.cpp (android/app/src/main/cpp/vinylo_llm.cpp).
+/// Platform channel to llama.cpp: android/app/src/main/cpp on Android, packages/vinylo_llama on iOS,
+/// both over the same C++ core.
 class LocalLlama {
   static const _channel = MethodChannel('vinylo/llama');
-  /// Open streams by id, with how much text each has been sent.
-  static final _streams = <int, ({StreamController<String> out, List<int> sent})>{};
-  static var _nextStream = 0;
-  static bool _listening = false;
 
-  static Future<String> complete(String prompt, int maxTokens) => _complete(prompt, maxTokens, null);
+  /// System prompt (~330 tokens) + one lyric line + its answer, or an explanation, fit easily.
+  static const contextTokens = 2048;
 
-  /// The model's text as it is generated: pieces arrive about every 200 ms, the rest when it ends.
-  static Stream<String> completeStream(String prompt, int maxTokens) {
-    if (!_listening) {
-      _listening = true;
-      _channel.setMethodCallHandler((call) async {
-        if (call.method != 'partial') return;
-        final args = call.arguments as Map;
-        final s = _streams[args['id'] as int];
-        if (s == null) return;
-        final text = args['text'] as String;
-        s.sent[0] += text.length;
-        s.out.add(text);
-      });
-    }
-    final id = _nextStream++;
-    final s = (out: StreamController<String>(), sent: [0]);
-    _streams[id] = s;
-    () async {
-      try {
-        final whole = await _complete(prompt, maxTokens, id);
-        // The pieces sent so far are a prefix of the whole text; hand on what is left.
-        if (whole.length > s.sent[0]) s.out.add(whole.substring(s.sent[0]));
-      } catch (e) {
-        s.out.addError(e);
-      } finally {
-        _streams.remove(id);
-        await s.out.close();
-      }
-    }();
-    return s.out.stream;
-  }
-
-  static Future<String> _complete(String prompt, int maxTokens, int? streamId) async {
+  /// [closeDepth] > 0: the prompt ends inside that many open JSON objects/arrays and generation stops
+  /// as soon as the model closes them.
+  static Future<String> complete(String prompt, int maxTokens, {int closeDepth = 0}) async {
     try {
       final out = await _channel.invokeMethod<String>('complete', {
         'path': ModelManager.modelFile.path,
         'prompt': prompt,
         'maxTokens': maxTokens,
-        'nCtx': 4096,
-        'streamId': ?streamId,
+        'nCtx': contextTokens,
+        'closeDepth': closeDepth,
       });
       return out ?? '';
     } on PlatformException catch (e) {
@@ -219,6 +205,14 @@ class LocalLlama {
         detail: tr('이 기기에서는 온디바이스 모델을 아직 쓸 수 없어요.'),
       );
     }
+  }
+
+  /// iOS: the model can be downloaded again, so it stays out of iCloud backups (App Store rule 2.23).
+  static Future<void> excludeFromBackup(String path) async {
+    if (!Platform.isIOS) return;
+    try {
+      await _channel.invokeMethod('excludeFromBackup', {'path': path});
+    } catch (_) {}
   }
 
   static Future<void> cancel() async {
@@ -271,11 +265,7 @@ class EngineFactory {
     // Without the downloaded model there is no on-device engine; nothing is faked.
     EngineKind.onDevice =>
       ModelManager.isSupported && ModelManager.isInstalled
-          ? LocalLlamaEngine(
-              LocalLlama.complete,
-              streamer: LocalLlama.completeStream,
-              modelName: ModelManager.modelName,
-            )
+          ? LocalLlamaEngine(LocalLlama.complete, modelName: ModelManager.modelName)
           : const UnavailableEngine(
               EngineKind.onDevice,
               '온디바이스 모델을 먼저 내려받아 주세요. 마이페이지 → 번역 엔진에서 받을 수 있어요.',
@@ -286,7 +276,7 @@ class EngineFactory {
   static String label(EngineKind kind) {
     if (kind != EngineKind.onDevice) return kind.badgeLabel;
     return ModelManager.isSupported && ModelManager.isInstalled
-        ? 'On-device · Gemma 4'
+        ? 'On-device · Vinylo E2B'
         : 'On-device · 모델 필요';
   }
 }

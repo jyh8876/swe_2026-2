@@ -9,6 +9,13 @@ import 'package:lyrics_translator/core/models.dart';
 import 'package:lyrics_translator/main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// The 00-2 key guide animates in a loop, so pumpAndSettle never settles while it is on a route;
+/// a page transition is done within a second.
+Future<void> settleRoute(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(seconds: 1));
+}
+
 void main() {
   Future<AppModel> model({bool onboarded = false, CollectionSnapshot? snap}) async {
     SharedPreferences.setMockInitialValues({});
@@ -27,15 +34,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('가사 속 표현을\nAI가 알려줘요'), findsOneWidget);
     await tester.tap(find.text('API 키 연결하기'));
-    await tester.pumpAndSettle();
+    await settleRoute(tester);
     await tester.tap(find.text('이미 키가 있어요'));
-    await tester.pumpAndSettle();
+    await settleRoute(tester);
     expect(find.text('Gemini API 키'), findsOneWidget);
     // Back to the intro and skip the key for now.
     await tester.tap(find.byTooltip('뒤로').last);
-    await tester.pumpAndSettle();
+    await settleRoute(tester);
     await tester.tap(find.byTooltip('뒤로').last);
-    await tester.pumpAndSettle();
+    await settleRoute(tester);
     await tester.tap(find.text('나중에 할게요'));
     await tester.pumpAndSettle();
     expect(m.settings.hasOnboarded, isTrue);

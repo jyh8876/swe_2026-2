@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart' hide Route;
 
@@ -124,8 +125,10 @@ class _SearchViewState extends State<SearchView> {
         child: Column(
           children: [
             // Users without Spotify see no empty playlist tab (FG-02 note).
-            if (SpotifyAuth.available &&
-                (spotifyLinked || model.spotifyAuth.isConfigured))
+            // iOS: the Apple Music library (Spotify login is Android only, feedback 11/22 #4).
+            if (Platform.isIOS
+                ? MusicApp.supported
+                : SpotifyAuth.available && (spotifyLinked || model.spotifyAuth.isConfigured))
               Padding(
                 padding: const EdgeInsets.fromLTRB(0, 0, 0, 4),
                 child: Row(

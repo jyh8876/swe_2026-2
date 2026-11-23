@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 import '../core/models.dart';
@@ -56,6 +56,9 @@ class SpotifyList {
   /// Albums come with their tracks, so no second request is needed.
   final List<SpotifyTrack>? tracks;
 
+  /// From the Apple Music library (iOS) instead of Spotify.
+  final bool appleMusic;
+
   const SpotifyList({
     required this.kind,
     required this.id,
@@ -65,6 +68,7 @@ class SpotifyList {
     this.total,
     this.readable = true,
     this.tracks,
+    this.appleMusic = false,
   });
 
   static const liked = SpotifyList(kind: SpotifyListKind.liked, id: 'liked', name: '좋아요 표시한 곡');
@@ -226,4 +230,58 @@ class SpotifyLibrary {
 extension on SpotifyTrack {
   SpotifyTrack withImage(String? url) =>
       SpotifyTrack(id: id, title: title, artist: artist, album: album, duration: duration, imageUrl: url ?? imageUrl);
+}
+
+/// The user's Apple Music library on iOS, through MusicKit (ios/Runner/AppleMusicBridge.swift): the
+/// same list and track shapes as Spotify, so the playlist screens serve both.
+class AppleMusicLibrary {
+  static const _channel = MethodChannel('vinylo/media_session');
+
+  static Future<(List<SpotifyList>, List<SpotifyList>)> lists() async {
+    final Map r;
+    try {
+      r = await _channel.invokeMethod<Map>('libraryLists') ?? const {};
+    } on PlatformException catch (e) {
+      throw SpotifyLibraryException(tr('Apple Music 보관함을 불러오지 못했어요: {0}', [e.message]));
+    }
+    List<SpotifyList> read(Object? items, SpotifyListKind kind) => [
+          for (final m in (items as List? ?? const []).whereType<Map>())
+            if (m['id'] is String && m['name'] is String)
+              SpotifyList(
+                kind: kind,
+                id: m['id'] as String,
+                name: m['name'] as String,
+                subtitle: m['subtitle'] as String?,
+                imageUrl: m['imageUrl'] as String?,
+                total: (m['total'] as num?)?.toInt(),
+                appleMusic: true,
+              ),
+        ];
+    return (read(r['playlists'], SpotifyListKind.playlist), read(r['albums'], SpotifyListKind.album));
+  }
+
+  static Future<List<SpotifyTrack>> tracks(SpotifyList list) async {
+    final List r;
+    try {
+      r = await _channel.invokeMethod<List>('listTracks', {
+            'kind': list.kind == SpotifyListKind.album ? 'album' : 'playlist',
+            'id': list.id,
+          }) ??
+          const [];
+    } on PlatformException catch (e) {
+      throw SpotifyLibraryException(tr('Apple Music 보관함을 불러오지 못했어요: {0}', [e.message]));
+    }
+    return [
+      for (final m in r.whereType<Map>())
+        if (m['id'] is String && m['title'] is String)
+          SpotifyTrack(
+            id: m['id'] as String,
+            title: m['title'] as String,
+            artist: m['artist'] as String? ?? '',
+            album: m['album'] as String? ?? (list.kind == SpotifyListKind.album ? list.name : null),
+            duration: (m['duration'] as num?)?.toDouble(),
+            imageUrl: m['imageUrl'] as String? ?? list.imageUrl,
+          ),
+    ];
+  }
 }

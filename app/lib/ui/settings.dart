@@ -86,6 +86,40 @@ class _SettingsViewState extends State<SettingsView> {
                 _nav(tr('내 컬렉션 자랑하기'), () => showShareCard(context)),
               ]),
           ],
+          // Home layout (feedback 11/23): album slide by default; the others stay as choices here.
+          _section(tr('보기 방식'), [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: SizedBox(
+                width: double.infinity,
+                child: SegmentedButton<LibraryLayout>(
+                  showSelectedIcon: false,
+                  style: SegmentedButton.styleFrom(
+                    selectedBackgroundColor: t.accent,
+                    selectedForegroundColor: t.onAccent,
+                    foregroundColor: t.textSecondary,
+                    side: BorderSide(color: t.stroke),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                  segments: [
+                    for (final (l, icon) in [
+                      (LibraryLayout.carousel, Icons.view_carousel_outlined),
+                      (LibraryLayout.stack, Icons.layers_outlined),
+                      (LibraryLayout.grid, Icons.grid_view_outlined),
+                      (LibraryLayout.list, Icons.view_list_outlined),
+                    ])
+                      ButtonSegment(
+                        value: l,
+                        icon: Icon(icon, size: 20),
+                        label: Text(tr(l.label), style: const TextStyle(fontSize: 12)),
+                      ),
+                  ],
+                  selected: {s.libraryLayout},
+                  onSelectionChanged: (v) => model.updateSettings((x) => x.libraryLayout = v.first),
+                ),
+              ),
+            ),
+          ]),
           _section(tr('테마'), [
             ListTile(
               title: Text(tr('배경'), style: TextStyle(color: t.textPrimary)),
@@ -469,7 +503,7 @@ class _SettingsViewState extends State<SettingsView> {
           _section(null, [
             _row(
               tr('버전'),
-              trailing: '0.18.2 (${Platform.isIOS ? 'iOS' : 'Android'})',
+              trailing: '0.18.3 (${Platform.isIOS ? 'iOS' : 'Android'})',
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
@@ -585,7 +619,7 @@ class _SettingsViewState extends State<SettingsView> {
               children: [
                 Expanded(
                   child: Text(
-                    tr('Gemma 4 E2B 다운로드 중… {0} / {1}', [
+                    tr('번역 모델 다운로드 중… {0} / {1}', [
                       StorageMeter.format(
                         (p * ModelManager.approximateBytes).round(),
                       ),
@@ -618,11 +652,11 @@ class _SettingsViewState extends State<SettingsView> {
       return _row(tr('온디바이스 모델'), trailing: tr('이 기기에서는 지원하지 않아요'));
     }
     if (ModelManager.isInstalled) {
-      return _row(tr('온디바이스 모델'), trailing: tr('Gemma 4 E2B 설치됨'));
+      return _row(tr('온디바이스 모델'), trailing: tr('번역 모델 설치됨'));
     }
     return ListTile(
       title: Text(
-        tr('Gemma 4 E2B 내려받기 ({0})', [
+        tr('번역 모델 내려받기 ({0})', [
           StorageMeter.format(ModelManager.approximateBytes),
         ]),
         style: TextStyle(color: t.accent),
@@ -633,7 +667,7 @@ class _SettingsViewState extends State<SettingsView> {
           await ModelManager.download((p) {
             if (mounted) setState(() => downloadProgress = p);
           });
-          if (mounted) showMessage(context, tr('Gemma 4 E2B를 설치했어요.'));
+          if (mounted) showMessage(context, tr('번역 모델을 설치했어요.'));
         } on CancelledException {
           if (mounted) showMessage(context, tr('다운로드를 멈췄어요. 다시 누르면 이어서 받아요.'));
         } catch (_) {

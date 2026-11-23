@@ -16,10 +16,8 @@ import 'covers.dart';
 import 'share_card.dart';
 import 'spotify_library.dart';
 
-enum LibraryLayout { carousel, stack, grid, list }
-
 /// FG-01 Library ("내 컬렉션"), following the Figma home frame and the Notion home ideas:
-/// album slide (default), block grid and list, switched by the toggle next to "노래 추가".
+/// album slide (default), stack, block grid and list, chosen in My page → 보기 방식 (feedback 11/23).
 /// Recommendations sit under every layout, and an empty library shows default covers and a feed.
 class LibraryView extends StatefulWidget {
   const LibraryView({super.key});
@@ -28,7 +26,6 @@ class LibraryView extends StatefulWidget {
 }
 
 class _LibraryViewState extends State<LibraryView> {
-  LibraryLayout layout = LibraryLayout.carousel;
   int focus = 0;
 
   @override
@@ -80,7 +77,6 @@ class _LibraryViewState extends State<LibraryView> {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
               child: Row(children: [
-                _ViewToggle(value: layout, onChanged: (v) => setState(() => layout = v)),
                 const Spacer(),
                 _AddPill(onTap: () => model.openAdd()),
               ]),
@@ -90,7 +86,7 @@ class _LibraryViewState extends State<LibraryView> {
                 ? const _EmptyHome()
                 : AnimatedSwitcher(
                     duration: MediaQuery.of(context).disableAnimations ? Duration.zero : const Duration(milliseconds: 220),
-                    child: switch (layout) {
+                    child: switch (model.settings.libraryLayout) {
                       LibraryLayout.carousel => _CarouselPage(key: const ValueKey('carousel'), songs: songs, initial: focus, onFocus: (i) => focus = i),
                       LibraryLayout.grid => _Grid(key: const ValueKey('grid'), songs: songs),
                       LibraryLayout.list => _List(key: const ValueKey('list'), songs: songs),
@@ -100,51 +96,6 @@ class _LibraryViewState extends State<LibraryView> {
           ),
         ]),
       ),
-    );
-  }
-}
-
-class _ViewToggle extends StatelessWidget {
-  final LibraryLayout value;
-  final ValueChanged<LibraryLayout> onChanged;
-  const _ViewToggle({required this.value, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.theme;
-    Widget btn(LibraryLayout v, IconData icon, String label) {
-      final on = value == v;
-      return Semantics(
-        label: label,
-        selected: on,
-        button: true,
-        excludeSemantics: true,
-        child: GestureDetector(
-          onTap: () => onChanged(v),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            curve: const Cubic(.3, .8, .3, 1),
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(color: on ? t.surfaceRaised : Colors.transparent, shape: BoxShape.circle),
-            child: Icon(icon, size: 20, color: on ? t.textPrimary : t.textTertiary),
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(color: t.surface, borderRadius: BorderRadius.circular(999), border: Border.all(color: t.stroke.withValues(alpha: 0.5))),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        btn(LibraryLayout.carousel, Icons.view_carousel_outlined, tr('앨범 슬라이드로 보기')),
-        const SizedBox(width: 2),
-        btn(LibraryLayout.grid, Icons.grid_view_outlined, tr('격자로 보기')),
-        const SizedBox(width: 2),
-        btn(LibraryLayout.list, Icons.view_list_outlined, tr('리스트로 보기')),
-        const SizedBox(width: 2),
-        btn(LibraryLayout.stack, Icons.layers_outlined, tr('겹쳐서 보기')),
-      ]),
     );
   }
 }
@@ -920,7 +871,7 @@ class _EmptyHome extends StatelessWidget {
         height: 250,
         child: LayoutBuilder(builder: (context, c) {
           final cx = c.maxWidth / 2;
-          Widget side(double d, String seed, String label) {
+          Widget side(double d) {
             final m = Matrix4.identity()
               ..setEntry(3, 2, 1 / 1100)
               ..rotateY(-d * 32 * pi / 180)
@@ -935,15 +886,15 @@ class _EmptyHome extends StatelessWidget {
                 child: Transform(
                   alignment: Alignment.center,
                   transform: m,
-                  child: GestureDetector(onTap: search, child: GeneratedCover(seed: seed, label: label)),
+                  child: GestureDetector(onTap: search, child: const AddCoverTile()),
                 ),
               ),
             );
           }
 
           return Stack(clipBehavior: Clip.none, children: [
-            side(-1, 'mix-easy', 'Easy\nMix'),
-            side(1, 'mix-pop', 'Pop\nMix'),
+            side(-1),
+            side(1),
             Positioned(
               left: cx - 100,
               top: 16,
@@ -953,25 +904,7 @@ class _EmptyHome extends StatelessWidget {
                 button: true,
                 label: tr('노래 추가'),
                 excludeSemantics: true,
-                child: GestureDetector(
-                  onTap: search,
-                  child: Container(
-                    decoration: const BoxDecoration(boxShadow: [BoxShadow(color: Color(0x40000000), offset: Offset(0, 20), blurRadius: 30, spreadRadius: -14)]),
-                    child: Stack(children: [
-                      const GeneratedCover(seed: 'put-your-song', label: 'Put your\nsong', color: Color(0xFF38D9A9)),
-                      Positioned(
-                        right: 14,
-                        top: 14,
-                        child: Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.9), shape: BoxShape.circle),
-                          child: const Icon(Icons.add, color: Color(0xFF16171B)),
-                        ),
-                      ),
-                    ]),
-                  ),
-                ),
+                child: AddSongTile(onTap: search),
               ),
             ),
           ]);
@@ -1014,6 +947,21 @@ class AddSongTile extends StatelessWidget {
           ]),
         ),
       ),
+    );
+  }
+}
+
+/// The cover of a song not added yet (feedback 11/23: instead of a generated CD cover): a dashed
+/// square with a plus.
+class AddCoverTile extends StatelessWidget {
+  const AddCoverTile({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    return CustomPaint(
+      painter: _DashedRect(t.stroke),
+      child: Center(child: Icon(Icons.add, size: 28, color: t.textSecondary)),
     );
   }
 }
@@ -1089,7 +1037,7 @@ class RecommendRow extends StatelessWidget {
                     width: 112,
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Stack(children: [
-                        SizedBox(width: 112, height: 112, child: GeneratedCover(seed: e.id, label: e.title)),
+                        const SizedBox(width: 112, height: 112, child: AddCoverTile()),
                         if (owned) Positioned(right: 6, top: 6, child: Icon(Icons.check_circle, size: 20, color: t.brand)),
                       ]),
                       const SizedBox(height: 8),

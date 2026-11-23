@@ -1,0 +1,18 @@
+name: vinylo_llama
+description: On-device llama.cpp for Vinylo on iOS (Metal). Android builds the same core in the app (android/app/src/main/cpp).
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.9.0
+  flutter: ">=3.35.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      ios:
+        pluginClass: VinyloLlamaPlugin
