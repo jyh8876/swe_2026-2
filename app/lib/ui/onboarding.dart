@@ -10,6 +10,7 @@ import '../app/platform_services.dart';
 import '../app/theme.dart';
 import '../core/llm.dart';
 import 'components.dart';
+import 'gemini_key_guide_graphic.dart';
 
 // Figma "00 온보딩" (런처 아이콘 section) and "온보딩 - API 키 연결" (00-1 to 00-4):
 // start → sign in → what the AI does → how to get a Gemini key → paste it → connected.
@@ -325,6 +326,24 @@ class OnboardingKeyGuide extends StatelessWidget {
     return _Step(
       title: tr('API 키를\n복사해 주세요'),
       body: [
+        // 로그인 → 키 복사 → 붙여넣기 애니메이션 (희재 시안). Drawn for the full 375 pt width, so it
+        // runs past the page's 16 pt side padding.
+        LayoutBuilder(builder: (context, box) {
+          final w = box.maxWidth + 32;
+          return SizedBox(
+            height: w * 248 / 375,
+            child: OverflowBox(
+              minWidth: w,
+              maxWidth: w,
+              child: ApiKeyGuideGraphic(
+                background: t.background,
+                brightness: t.isDark ? Brightness.dark : Brightness.light,
+                fontFamily: AppTheme.fontFamilyOverride,
+              ),
+            ),
+          );
+        }),
+        const SizedBox(height: 20),
         step(1, tr('Google AI Studio에 로그인해요'), tr('이미 있는 Google 계정으로 사용할 수 있어요')),
         step(2, tr('목록에서 API 키를 복사해요'), tr("키가 없다면 'API 키 만들기'를 눌러요")),
         step(3, tr('키를 복사해서 돌아와요'), tr('다음 화면에서 붙여넣기만 하면 끝나요')),
