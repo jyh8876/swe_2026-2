@@ -86,9 +86,16 @@ enum ReportReason { wrong, awkward, offensive, reading, other }
 /// The Vinylo server (server/aws). It keeps users, song metadata, quiz scores, conquered songs,
 /// coins and purchases; never lyrics, translations or quiz questions.
 ///   --dart-define=VINYLO_API_URL=https://…lambda-url….on.aws
-/// Without it the account stays on the device only.
+/// Release builds use the deployed server when it is not given, so every build path (the iOS
+/// build bot, CI, a local `flutter build`) talks to it without extra flags. Debug runs and tests
+/// keep it off unless it is given; then the account stays on the device only.
 class AccountApi {
-  static const baseUrl = String.fromEnvironment('VINYLO_API_URL');
+  /// The deployed server (server/aws, Seoul). Not a secret: it is in every release build.
+  static const productionUrl = 'https://pruzssudez6nz6w4cb6qmbpvei0msrrh.lambda-url.ap-northeast-2.on.aws';
+  static const baseUrl = String.fromEnvironment(
+    'VINYLO_API_URL',
+    defaultValue: bool.fromEnvironment('dart.vm.product') ? productionUrl : '',
+  );
 
   final String base;
   final http.Client _client;
