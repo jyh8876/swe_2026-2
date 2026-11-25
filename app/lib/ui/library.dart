@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart' hide Route;
 import 'package:flutter/services.dart';
@@ -136,7 +137,12 @@ class AlbumPlate extends StatelessWidget {
   final bool translating;
   final List<BoxShadow> shadow;
   final bool showBadge;
-  const AlbumPlate({super.key, required this.song, required this.size, this.translating = false, required this.shadow, this.showBadge = true});
+
+  /// Paper-sleeve trim: the hairline rim, spine line and bevels. Off for the stack view's clear
+  /// plastic plates, where that trim read as a second record behind the cover.
+  final bool sleeve;
+  const AlbumPlate(
+      {super.key, required this.song, required this.size, this.translating = false, required this.shadow, this.showBadge = true, this.sleeve = true});
 
   @override
   Widget build(BuildContext context) {
@@ -149,7 +155,11 @@ class AlbumPlate extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(2),
-        border: Border.all(color: song.isConquered ? t.gold : const Color(0x14000000), width: song.isConquered ? 2 : 1),
+        border: song.isConquered
+            ? Border.all(color: t.gold, width: 2)
+            : sleeve
+                ? Border.all(color: const Color(0x14000000), width: 1)
+                : null,
         boxShadow: shadow,
         image: hasCover ? DecorationImage(image: FileImage(file), fit: BoxFit.cover) : null,
       ),
@@ -170,11 +180,13 @@ class AlbumPlate extends StatelessWidget {
             ),
           ),
           // spine edge, line and bevels
-          Positioned(left: 0, top: 0, bottom: 0, width: 10 * k, child: DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.white.withValues(alpha: .35), Colors.white.withValues(alpha: .12)])))),
-          Positioned(left: 10 * k - 1, top: 0, bottom: 0, width: max(1, k), child: ColoredBox(color: Colors.white.withValues(alpha: .4))),
-          Positioned(right: 0, top: 0, bottom: 0, width: 4 * k, child: ColoredBox(color: Colors.white.withValues(alpha: .2))),
-          Positioned(left: 0, right: 0, top: 0, height: 3 * k, child: ColoredBox(color: Colors.white.withValues(alpha: .2))),
-          Positioned(left: 0, right: 0, bottom: 0, height: 3 * k, child: const ColoredBox(color: Color(0x1A000000))),
+          if (sleeve) ...[
+            Positioned(left: 0, top: 0, bottom: 0, width: 10 * k, child: DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.white.withValues(alpha: .35), Colors.white.withValues(alpha: .12)])))),
+            Positioned(left: 10 * k - 1, top: 0, bottom: 0, width: max(1, k), child: ColoredBox(color: Colors.white.withValues(alpha: .4))),
+            Positioned(right: 0, top: 0, bottom: 0, width: 4 * k, child: ColoredBox(color: Colors.white.withValues(alpha: .2))),
+            Positioned(left: 0, right: 0, top: 0, height: 3 * k, child: ColoredBox(color: Colors.white.withValues(alpha: .2))),
+            Positioned(left: 0, right: 0, bottom: 0, height: 3 * k, child: const ColoredBox(color: Color(0x1A000000))),
+          ],
           if (showBadge && (translating || song.status == SongStatus.failed || song.isConquered))
             Positioned(left: 8 * k + 6, top: 8 * k + 4, child: StatusBadge(_badge(song, translating))),
         ]),
@@ -491,6 +503,16 @@ class _StackViewState extends State<_StackView> with SingleTickerProviderStateMi
   int get n => widget.songs.length;
   int get _front => _c.value.round().clamp(0, n - 1);
 
+  /// The plate colour of [song]; a photo cover's average colour arrives a moment later.
+  Color _tint(Song song) {
+    final c = coverTint(song);
+    if (c != null) return c;
+    coverTintAsync(song).then((_) {
+      if (mounted) setState(() {});
+    });
+    return const Color(0xFF8C939C);
+  }
+
   @override
   void dispose() {
     _c.dispose();
@@ -616,19 +638,16 @@ class _StackViewState extends State<_StackView> with SingleTickerProviderStateMi
         child: Transform(
           alignment: Alignment.center,
           transform: m,
-          // An LP is a slab, not a sheet: back face and four edges behind the cover (Notion 11/19).
+          // A thin glass plate tinted with the album's colour: edges behind, the cover inset on top.
           child: Stack(clipBehavior: Clip.none, children: [
-            ..._slab(card),
+            ..._slab(card, _tint(song)),
             Semantics(
               button: true,
               label: tr('{0}, {1} 재생', [song.title, song.artist]),
               child: GestureDetector(
                 onTap: () => d.abs() < 0.5 ? _play(i) : _settle(i.toDouble()),
                 onLongPress: () => showSongMenu(context, song),
-                child: Container(
-                  decoration: BoxDecoration(border: Border.all(color: Colors.white.withValues(alpha: 0.6), width: 1)),
-                  child: AlbumPlate(song: song, size: card, translating: model.isTranslating(song.id), shadow: const []),
-                ),
+                child: _GlassPlate(song: song, size: card, tint: _tint(song), translating: model.isTranslating(song.id)),
               ),
             ),
           ]),
@@ -640,16 +659,119 @@ class _StackViewState extends State<_StackView> with SingleTickerProviderStateMi
 
 // ─────────────── LP slab ───────────────
 
-/// Thickness of a cover plate, as a share of the cover size: a thin sheet of clear plastic
-/// (11/19 #12 halved it to 2.25 %, now 8.5 % at the user's request for a clearly thick stack; the edge
-/// stays clear plastic with no dark rim so it still never reads as two records).
-const _slabDepth = 0.085;
+/// Thickness of a cover plate, as a share of the cover size: a thin glass sheet
+/// (4.5 % → 2.25 % on 11/19 #12 → 8.5 % on 11/21 → 2.5 % on 11/25 #12, like the UNVEIL reference).
+const _slabDepth = 0.025;
 
-/// The back face and the four edges of an LP of [card] size, standing behind a cover drawn at
-/// z = 0 (further away is +z, as in the stack's camera). Painted before the cover.
-List<Widget> _slab(double card) {
+/// The stack's plate for one song, after the UNVEIL reference: a translucent glass sheet in the
+/// album's colour, the cover inset on it with its edges melting into the glass, and a rim in the
+/// album's colour. No paper-sleeve trim, so it never reads as two records.
+class _GlassPlate extends StatelessWidget {
+  final Song song;
+  final double size;
+  final Color tint;
+  final bool translating;
+  const _GlassPlate({required this.song, required this.size, required this.tint, required this.translating});
+
+  @override
+  Widget build(BuildContext context) {
+    final inset = size * 0.07;
+    final light = Color.lerp(tint, Colors.white, 0.35)!;
+    final dark = Color.lerp(tint, Colors.black, 0.25)!;
+    final k = size / 224;
+    Shader fade(Rect r, Alignment begin, Alignment end) => LinearGradient(
+          begin: begin,
+          end: end,
+          colors: const [Colors.transparent, Colors.black, Colors.black, Colors.transparent],
+          stops: const [0, 0.14, 0.86, 1],
+        ).createShader(r);
+    final showBadge = translating || song.status == SongStatus.failed || song.isConquered;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [light.withValues(alpha: 0.78), tint.withValues(alpha: 0.70), dark.withValues(alpha: 0.82)],
+        ),
+      ),
+      foregroundDecoration: BoxDecoration(
+        border: Border.all(color: song.isConquered ? context.theme.gold : dark.withValues(alpha: 0.9), width: song.isConquered ? 2 : 1),
+      ),
+      child: Stack(children: [
+        Positioned.fill(
+          left: inset,
+          top: inset,
+          right: inset,
+          bottom: inset,
+          child: ShaderMask(
+            blendMode: BlendMode.dstIn,
+            shaderCallback: (r) => fade(r, Alignment.centerLeft, Alignment.centerRight),
+            child: ShaderMask(
+              blendMode: BlendMode.dstIn,
+              shaderCallback: (r) => fade(r, Alignment.topCenter, Alignment.bottomCenter),
+              child: AlbumPlate(song: song, size: size - inset * 2, shadow: const [], showBadge: false, sleeve: false),
+            ),
+          ),
+        ),
+        if (showBadge) Positioned(left: 8 * k + 6, top: 8 * k + 4, child: StatusBadge(AlbumPlate._badge(song, translating))),
+      ]),
+    );
+  }
+}
+
+/// Average colours of covers, by cover file (photos) or song id (generated covers).
+final _tints = <String, Color>{};
+final _tintLoads = <String, Future<Color>>{};
+
+/// The colour of [song]'s cover if it is known now: always for a generated cover, after
+/// [coverTintAsync] has finished for a photo.
+Color? coverTint(Song song) {
+  final path = song.coverPath;
+  final file = path == null ? null : CoverStore.file(path);
+  if (file == null || !file.existsSync()) {
+    // The generated cover: a dark square with a coloured disc, so a dark shade of the disc colour.
+    final (a, _) = CoverPainter(seed: song.id).colors;
+    return Color.lerp(const Color(0xFF2A2C31), a, 0.45);
+  }
+  return _tints[path];
+}
+
+/// Works out the average colour of [song]'s photo cover from an 8×8 thumbnail, once per cover.
+Future<Color> coverTintAsync(Song song) {
+  final known = coverTint(song);
+  if (known != null) return Future.value(known);
+  final path = song.coverPath!;
+  return _tintLoads[path] ??= () async {
+    var c = const Color(0xFF8C939C);
+    try {
+      final bytes = await CoverStore.file(path).readAsBytes();
+      final codec = await ui.instantiateImageCodec(bytes, targetWidth: 8, targetHeight: 8);
+      final image = (await codec.getNextFrame()).image;
+      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      image.dispose();
+      if (data != null) {
+        var r = 0, g = 0, b = 0;
+        final px = data.lengthInBytes ~/ 4;
+        for (var i = 0; i < px; i++) {
+          r += data.getUint8(i * 4);
+          g += data.getUint8(i * 4 + 1);
+          b += data.getUint8(i * 4 + 2);
+        }
+        c = Color.fromARGB(255, r ~/ px, g ~/ px, b ~/ px);
+      }
+    } catch (_) {}
+    return _tints[path] = c;
+  }();
+}
+
+/// The back face and the four edges of a plate of [card] size, standing behind a cover drawn at
+/// z = 0 (further away is +z, as in the stack's camera). Painted before the cover. [tint] is the
+/// album's colour, so the plate's rim shows it like the reference.
+List<Widget> _slab(double card, Color tint) {
   final th = card * _slabDepth;
-  final edge = Colors.white.withValues(alpha: 0.30);
+  final edge = tint.withValues(alpha: 0.30);
   Widget face(double w, double h, Matrix4 m, {Gradient? g}) => Positioned(
         left: (card - w) / 2,
         top: (card - h) / 2,
@@ -661,11 +783,11 @@ List<Widget> _slab(double card) {
           child: DecoratedBox(decoration: BoxDecoration(color: g == null ? edge : null, gradient: g)),
         ),
       );
-  // Clear plastic edge: brighter where the light catches the faces, see-through in the middle.
-  final side = LinearGradient(
-      colors: [Colors.white.withValues(alpha: 0.7), Colors.white.withValues(alpha: 0.22), Colors.white.withValues(alpha: 0.7)]);
+  // Coloured glass edge: solid where the faces meet, a little see-through in the middle.
+  final rim = Color.lerp(tint, Colors.black, 0.2)!;
+  final side = LinearGradient(colors: [rim.withValues(alpha: 0.95), tint.withValues(alpha: 0.65), rim.withValues(alpha: 0.95)]);
   return [
-    face(card, card, Matrix4.identity()..translateByDouble(0.0, 0.0, th, 1.0), g: LinearGradient(colors: [Colors.white.withValues(alpha: 0.16), Colors.white.withValues(alpha: 0.07)])),
+    face(card, card, Matrix4.identity()..translateByDouble(0.0, 0.0, th, 1.0), g: LinearGradient(colors: [tint.withValues(alpha: 0.35), tint.withValues(alpha: 0.20)])),
     face(th, card, Matrix4.identity()..translateByDouble(card / 2, 0.0, th / 2, 1.0)..rotateY(pi / 2), g: side),
     face(th, card, Matrix4.identity()..translateByDouble(-card / 2, 0.0, th / 2, 1.0)..rotateY(pi / 2), g: side),
     face(card, th, Matrix4.identity()..translateByDouble(0.0, -card / 2, th / 2, 1.0)..rotateX(pi / 2), g: side.withRotation()),
