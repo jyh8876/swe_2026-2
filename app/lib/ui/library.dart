@@ -626,8 +626,8 @@ class _StackViewState extends State<_StackView> with SingleTickerProviderStateMi
       ..rotateX(_pitch)
       ..rotateY(_yaw)
       ..translateByDouble(0.0, 0.0, d * card * _gap, 1.0);
-    // Frosted glass: the front cover is nearly solid, the ones behind it let the stack show through.
-    final opacity = d < 0 ? (1 + d / 1.3).clamp(0.0, 1.0) : (0.96 - min(d, 1.0) * 0.12 - max(0.0, d - 1) * 0.05).clamp(0.35, 0.96);
+    // Glass, but mostly solid like the reference: the plates behind only let a little through.
+    final opacity = d < 0 ? (1 + d / 1.3).clamp(0.0, 1.0) : (0.98 - min(d, 1.0) * 0.06 - max(0.0, d - 1) * 0.03).clamp(0.78, 0.98);
     return Positioned(
       left: w * 0.30 - card / 2,
       top: h * 0.66 - card / 2,
@@ -675,50 +675,52 @@ class _GlassPlate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final inset = size * 0.07;
-    final light = Color.lerp(tint, Colors.white, 0.35)!;
-    final dark = Color.lerp(tint, Colors.black, 0.25)!;
+    final (light, dark) = plateShades(tint);
     final k = size / 224;
-    Shader fade(Rect r, Alignment begin, Alignment end) => LinearGradient(
-          begin: begin,
-          end: end,
-          colors: const [Colors.transparent, Colors.black, Colors.black, Colors.transparent],
-          stops: const [0, 0.14, 0.86, 1],
-        ).createShader(r);
+    // A narrow frosted band in the album's own colour, so the edge and the middle barely differ.
+    Widget haze(Alignment begin, Alignment end) => Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: begin,
+                end: end,
+                colors: [tint.withValues(alpha: 0.38), tint.withValues(alpha: 0), tint.withValues(alpha: 0), tint.withValues(alpha: 0.38)],
+                stops: const [0, 0.06, 0.94, 1],
+              ),
+            ),
+          ),
+        );
     final showBadge = translating || song.status == SongStatus.failed || song.isConquered;
+    final rim = song.isConquered ? null : light.withValues(alpha: 0.85);
+    final shade = song.isConquered ? null : dark.withValues(alpha: 0.9);
     return Container(
       width: size,
       height: size,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [light.withValues(alpha: 0.78), tint.withValues(alpha: 0.70), dark.withValues(alpha: 0.82)],
-        ),
-      ),
       foregroundDecoration: BoxDecoration(
-        border: Border.all(color: song.isConquered ? context.theme.gold : dark.withValues(alpha: 0.9), width: song.isConquered ? 2 : 1),
+        // Lit from the top left: the top and left rims catch the light, the others fall in shade.
+        border: song.isConquered
+            ? Border.all(color: context.theme.gold, width: 2)
+            : Border(top: BorderSide(color: rim!), left: BorderSide(color: rim), right: BorderSide(color: shade!), bottom: BorderSide(color: shade)),
       ),
       child: Stack(children: [
-        Positioned.fill(
-          left: inset,
-          top: inset,
-          right: inset,
-          bottom: inset,
-          child: ShaderMask(
-            blendMode: BlendMode.dstIn,
-            shaderCallback: (r) => fade(r, Alignment.centerLeft, Alignment.centerRight),
-            child: ShaderMask(
-              blendMode: BlendMode.dstIn,
-              shaderCallback: (r) => fade(r, Alignment.topCenter, Alignment.bottomCenter),
-              child: AlbumPlate(song: song, size: size - inset * 2, shadow: const [], showBadge: false, sleeve: false),
-            ),
-          ),
-        ),
+        Positioned.fill(child: AlbumPlate(song: song, size: size, shadow: const [], showBadge: false, sleeve: false)),
+        haze(Alignment.centerLeft, Alignment.centerRight),
+        haze(Alignment.topCenter, Alignment.bottomCenter),
         if (showBadge) Positioned(left: 8 * k + 6, top: 8 * k + 4, child: StatusBadge(AlbumPlate._badge(song, translating))),
       ]),
     );
   }
+}
+
+/// The lit and the shaded tone of a plate in [tint]: lighter and darker versions of the album's
+/// own colour, so the rim follows the cover's overall tone.
+(Color, Color) plateShades(Color tint) {
+  final hsl = HSLColor.fromColor(tint);
+  final l = hsl.lightness;
+  return (
+    hsl.withLightness((l + (1 - l) * 0.28).clamp(0.0, 1.0)).withSaturation(hsl.saturation * 0.75).toColor(),
+    hsl.withLightness((l * 0.62).clamp(0.0, 1.0)).toColor(),
+  );
 }
 
 /// Average colours of covers, by cover file (photos) or song id (generated covers).
@@ -783,15 +785,16 @@ List<Widget> _slab(double card, Color tint) {
           child: DecoratedBox(decoration: BoxDecoration(color: g == null ? edge : null, gradient: g)),
         ),
       );
-  // Coloured glass edge: solid where the faces meet, a little see-through in the middle.
-  final rim = Color.lerp(tint, Colors.black, 0.2)!;
-  final side = LinearGradient(colors: [rim.withValues(alpha: 0.95), tint.withValues(alpha: 0.65), rim.withValues(alpha: 0.95)]);
+  // Edges in the album's colour with light and shade: the top and left catch the light, the right
+  // and bottom fall in shade, so a pale cover gets a pale rim and a dark one a dark rim.
+  final (light, dark) = plateShades(tint);
+  LinearGradient band(Color c) => LinearGradient(colors: [c.withValues(alpha: 0.95), c.withValues(alpha: 0.80), c.withValues(alpha: 0.95)]);
   return [
-    face(card, card, Matrix4.identity()..translateByDouble(0.0, 0.0, th, 1.0), g: LinearGradient(colors: [tint.withValues(alpha: 0.35), tint.withValues(alpha: 0.20)])),
-    face(th, card, Matrix4.identity()..translateByDouble(card / 2, 0.0, th / 2, 1.0)..rotateY(pi / 2), g: side),
-    face(th, card, Matrix4.identity()..translateByDouble(-card / 2, 0.0, th / 2, 1.0)..rotateY(pi / 2), g: side),
-    face(card, th, Matrix4.identity()..translateByDouble(0.0, -card / 2, th / 2, 1.0)..rotateX(pi / 2), g: side.withRotation()),
-    face(card, th, Matrix4.identity()..translateByDouble(0.0, card / 2, th / 2, 1.0)..rotateX(pi / 2), g: side.withRotation()),
+    face(card, card, Matrix4.identity()..translateByDouble(0.0, 0.0, th, 1.0), g: LinearGradient(colors: [tint.withValues(alpha: 0.55), dark.withValues(alpha: 0.55)])),
+    face(th, card, Matrix4.identity()..translateByDouble(card / 2, 0.0, th / 2, 1.0)..rotateY(pi / 2), g: band(dark)),
+    face(th, card, Matrix4.identity()..translateByDouble(-card / 2, 0.0, th / 2, 1.0)..rotateY(pi / 2), g: band(light)),
+    face(card, th, Matrix4.identity()..translateByDouble(0.0, -card / 2, th / 2, 1.0)..rotateX(pi / 2), g: band(light).withRotation()),
+    face(card, th, Matrix4.identity()..translateByDouble(0.0, card / 2, th / 2, 1.0)..rotateX(pi / 2), g: band(dark).withRotation()),
   ];
 }
 
