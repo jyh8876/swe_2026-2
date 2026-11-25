@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Deploys the Vinylo server to AWS at (near) zero cost:
 #   Lambda (Node.js 22, arm64, 128 MB) + Function URL (HTTPS, no domain or load balancer)
-#   One DynamoDB table (pk/sk), provisioned 2 RCU / 2 WCU (inside the always-free 25/25)
+#   One DynamoDB table (pk/sk), provisioned 25 RCU / 25 WCU (the always-free limit; keep it the only
+#   provisioned table in the account, or the free 25/25 is shared)
 #   SSM Parameter Store standard SecureStrings for keys and the session secret (free)
 #   CloudWatch logs kept 7 days
 # Safe to run again: existing resources are updated, not duplicated.
@@ -26,6 +27,7 @@ cd "$(dirname "$0")"
 REGION="${AWS_REGION:-ap-northeast-2}"
 NAME="${NAME:-vinylo-api}"
 TABLE="${TABLE:-vinylo-data}"
+RCU="${RCU:-25}" WCU="${WCU:-25}"   # DynamoDB always-free limit
 PARAM="${PARAM:-/vinylo/musickit-p8}"
 SESSION_PARAM="${SESSION_PARAM:-/vinylo/session-secret}"
 PLAY_PARAM="${PLAY_PARAM:-/vinylo/play-service-account}"
@@ -78,8 +80,15 @@ if ! aws dynamodb describe-table --table-name "$TABLE" >/dev/null 2>&1; then
   aws dynamodb create-table --table-name "$TABLE" \
     --attribute-definitions AttributeName=pk,AttributeType=S AttributeName=sk,AttributeType=S \
     --key-schema AttributeName=pk,KeyType=HASH AttributeName=sk,KeyType=RANGE \
-    --billing-mode PROVISIONED --provisioned-throughput ReadCapacityUnits=2,WriteCapacityUnits=2 \
+    --billing-mode PROVISIONED --provisioned-throughput ReadCapacityUnits=$RCU,WriteCapacityUnits=$WCU \
     --deletion-protection-enabled >/dev/null
+  aws dynamodb wait table-exists --table-name "$TABLE"
+elif [ "$(aws dynamodb describe-table --table-name "$TABLE" \
+    --query '[Table.ProvisionedThroughput.ReadCapacityUnits,Table.ProvisionedThroughput.WriteCapacityUnits]' \
+    --output text | tr -s '\t' ' ')" != "$RCU $WCU" ]; then
+  # A table made earlier with 2/2: raise it to the free limit.
+  aws dynamodb update-table --table-name "$TABLE" \
+    --provisioned-throughput ReadCapacityUnits=$RCU,WriteCapacityUnits=$WCU >/dev/null
   aws dynamodb wait table-exists --table-name "$TABLE"
 fi
 

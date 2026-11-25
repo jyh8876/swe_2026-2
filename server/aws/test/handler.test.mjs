@@ -135,6 +135,20 @@ test('daily coin once per Seoul day; uploads spend a coin', async () => {
   assert.equal(ledger.reduce((n, l) => n + l.change, 0), 0);
 });
 
+test('the daily coin fills the balance up to 3 and no further', async () => {
+  // The balance is 0 after the test above; one Seoul day after another from 11/22.
+  const day = (n) => Date.parse('2026-11-21T15:00:00Z') + n * 86_400_000;
+  for (let n = 0; n < 3; n++) assert.equal((await call('POST', '/v1/coins/daily', { tok: appleSession, now: day(n) })).json.coinBalance, n + 1);
+  const r = await call('POST', '/v1/coins/daily', { tok: appleSession, now: day(3) });
+  assert.deepEqual([r.status, r.json.given, r.json.full, r.json.coinBalance], [409, false, true, 3]);
+  // Already taken today is not "full".
+  const again = await call('POST', '/v1/coins/daily', { tok: appleSession, now: day(2) + 3600_000 });
+  assert.equal(again.json.full, false);
+  // After spending one, the next day refills again.
+  await call('POST', '/v1/coins/spend', { tok: appleSession, body: { reason: 'upload', songId: 's-1' } });
+  assert.equal((await call('POST', '/v1/coins/daily', { tok: appleSession, now: day(4) })).json.coinBalance, 3);
+});
+
 test('Google Play purchases: verified, acknowledged, granted once, one account per token', async () => {
   play.set('tok-coins', { purchaseState: 0, acknowledgementState: 0, orderId: 'GPA.1', purchaseTimeMillis: `${T0}` });
   calls.length = 0;

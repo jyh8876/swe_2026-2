@@ -1,1 +1,4 @@
 deploy.env
+*.p8
+*.csv
+*credentials*

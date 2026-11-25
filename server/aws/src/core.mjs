@@ -319,6 +319,12 @@ export function reportInput(body) {
 export const COIN = { daily: 1, conquer: 1, upload: -1 };
 
 /**
+ * The daily coin only tops the balance up to this many (milestone: up to 3 coins are kept).
+ * Coins from conquering or purchases are not capped.
+ */
+export const DAILY_COIN_CAP = 3;
+
+/**
  * The day a daily coin belongs to, as YYYY-MM-DD in the given time zone offset (default UTC+9),
  * so the daily coin refills at midnight Korean time.
  */

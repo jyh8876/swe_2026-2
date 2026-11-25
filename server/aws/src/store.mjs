@@ -183,14 +183,17 @@ function balanceUpdate(userId, change, { condition, names = {}, values = {}, set
   };
 }
 
-/** Gives the daily coin once per [day]; false when it was already given that day. */
-export async function claimDaily(userId, change, day, now) {
+/**
+ * Gives the daily coin once per [day] while the balance is below [cap]; false when it was already
+ * given that day or the balance is full.
+ */
+export async function claimDaily(userId, change, day, now, cap) {
   try {
     await send(new TransactWriteItemsCommand({
       TransactItems: [
         balanceUpdate(userId, change, {
-          condition: '(attribute_not_exists(lastRefillDay) OR lastRefillDay <> :d)',
-          values: { ':d': toAttr(day), ':t': toAttr(new Date(now).toISOString()) },
+          condition: '(attribute_not_exists(lastRefillDay) OR lastRefillDay <> :d) AND coinBalance < :cap',
+          values: { ':d': toAttr(day), ':t': toAttr(new Date(now).toISOString()), ':cap': toAttr(cap) },
           set: ['lastRefillDay = :d', 'lastRefillAt = :t'],
         }),
         ledgerPut(userId, change, 'daily', null, now),

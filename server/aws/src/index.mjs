@@ -8,7 +8,7 @@
 // Only the AWS SDK built into the Lambda Node.js runtime is used, so the zip is just this folder.
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import {
-  appleClientSecret, appleMusicToken, AuthError, checkId, COIN, coinDay, googleServiceAssertion, InputError,
+  appleClientSecret, appleMusicToken, AuthError, checkId, COIN, coinDay, DAILY_COIN_CAP, googleServiceAssertion, InputError,
   isSessionToken, JwksCache, productStatus, profileInput, quizInput, reportInput, revokeAppleTokens, sessionToken,
   songInput, subscriptionStatus, TokenCache, tokenHash, tokenProvider, unlimitedActive, verifyIdToken, verifySession,
 } from './core.mjs';
@@ -294,9 +294,12 @@ async function route(event, now) {
   }
   if (path === '/v1/coins/daily' && method === 'POST') {
     await needProfile();
-    const given = await db.claimDaily(uid, COIN.daily, coinDay(now, Number(env.COIN_DAY_OFFSET_MINUTES ?? 540)), now);
+    const day = coinDay(now, Number(env.COIN_DAY_OFFSET_MINUTES ?? 540));
+    const given = await db.claimDaily(uid, COIN.daily, day, now, DAILY_COIN_CAP);
     const p = await db.getProfile(uid);
-    return reply(given ? 200 : 409, { given, coinBalance: p.coinBalance, lastRefillAt: p.lastRefillAt ?? null });
+    // full: not given because the balance is already at the cap (not because today's coin was taken).
+    const full = !given && p.lastRefillDay !== day && (p.coinBalance ?? 0) >= DAILY_COIN_CAP;
+    return reply(given ? 200 : 409, { given, full, coinBalance: p.coinBalance, lastRefillAt: p.lastRefillAt ?? null });
   }
   if (path === '/v1/coins/spend' && method === 'POST') {
     const body = jsonBody(event);

@@ -47,7 +47,9 @@ the other calls take the session token (or a fresh Google/Apple token).
 Errors are `{"error": "..."}` with 400 (bad input), 401 (token), 402 (no coins), 404, 409, 503
 (not configured).
 
-The coin amounts are in `COIN` in `src/core.mjs` (daily +1, conquer +1, upload −1). Ad rewards
+The coin amounts are in `COIN` in `src/core.mjs` (daily +1, conquer +1, upload −1). The daily
+coin only fills the balance up to `DAILY_COIN_CAP` (3); past that `POST /v1/coins/daily` answers
+409 with `full: true`. Coins from conquering or purchases are not capped. Ad rewards
 (`ad`) are not accepted until ad-network verification exists. Apple in-app purchases answer
 501 until App Store Server API checks are added.
 
@@ -57,8 +59,9 @@ About $0 a month at small scale:
 
 - Lambda arm64, 128 MB: the always-free tier covers 1M requests a month.
 - Function URL instead of API Gateway or a load balancer: no extra charge, HTTPS included.
-- One DynamoDB table, provisioned 2 read / 2 write units: inside the always-free 25/25. No
-  backups (PITR), streams or indexes.
+- One DynamoDB table, provisioned 25 read / 25 write units: the always-free limit (it is per
+  account and region, so keep this the only provisioned table). No backups (PITR), streams or
+  indexes.
 - SSM Parameter Store standard parameters: free.
 - CloudWatch logs kept 7 days; only errors are logged.
 - Reserved concurrency 5, when the account allows it, caps the bill if someone floods the URL.
