@@ -146,6 +146,9 @@ class AppSettings {
   AccentColor accent = AccentColor.mint;
   LibraryLayout libraryLayout = LibraryLayout.carousel;
 
+  /// Where the layout is chosen, for the layout survey (My page → 보기 방식).
+  LayoutControl layoutControl = LayoutControl.myPage;
+
   EngineConfig get engineConfig => EngineConfig(
       vinyloURL: vinyloURL, vinyloModel: vinyloModel, gatewayURL: gatewayURL, gatewayModel: gatewayModel, claudeModel: claudeModel);
 
@@ -171,6 +174,7 @@ class AppSettings {
         'themeBase': themeBase.name,
         'accent': accent.name,
         'libraryLayout': libraryLayout.name,
+        'layoutControl': layoutControl.name,
       };
 
   static AppSettings fromJson(Map j) {
@@ -199,6 +203,7 @@ class AppSettings {
     s.themeBase = ThemeBase.values.firstWhere((e) => e.name == j['themeBase'], orElse: () => ThemeBase.light);
     s.accent = AccentColor.values.firstWhere((e) => e.name == j['accent'], orElse: () => AccentColor.mint);
     s.libraryLayout = LibraryLayout.values.firstWhere((e) => e.name == j['libraryLayout'], orElse: () => LibraryLayout.carousel);
+    s.layoutControl = LayoutControl.values.firstWhere((e) => e.name == j['layoutControl'], orElse: () => LayoutControl.myPage);
     return s;
   }
 }
@@ -212,6 +217,16 @@ enum LibraryLayout {
 
   final String label;
   const LibraryLayout(this.label);
+}
+
+/// Where the home layout is chosen, two variants for the layout survey (#15): B picks it in
+/// My page, C with one folding button next to "노래 추가" on the home.
+enum LayoutControl {
+  myPage('B방식'),
+  home('C방식');
+
+  final String label;
+  const LayoutControl(this.label);
 }
 
 /// Bottom tabs (Notion "홈화면 하단 바"): library, quiz, saved phrases, my page.

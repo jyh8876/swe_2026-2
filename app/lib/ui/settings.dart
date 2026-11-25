@@ -86,13 +86,14 @@ class _SettingsViewState extends State<SettingsView> {
                 _nav(tr('내 컬렉션 자랑하기'), () => showShareCard(context)),
               ]),
           ],
-          // Home layout (feedback 11/23): album slide by default; the others stay as choices here.
+          // Home layout, two variants for the survey: B picks the layout here, C on the home with
+          // one folding button next to "노래 추가". Album slide is the default layout either way.
           _section(tr('보기 방식'), [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: SizedBox(
                 width: double.infinity,
-                child: SegmentedButton<LibraryLayout>(
+                child: SegmentedButton<LayoutControl>(
                   showSelectedIcon: false,
                   style: SegmentedButton.styleFrom(
                     selectedBackgroundColor: t.accent,
@@ -102,23 +103,59 @@ class _SettingsViewState extends State<SettingsView> {
                     padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
                   segments: [
-                    for (final (l, icon) in [
-                      (LibraryLayout.carousel, Icons.view_carousel_outlined),
-                      (LibraryLayout.stack, Icons.layers_outlined),
-                      (LibraryLayout.grid, Icons.grid_view_outlined),
-                      (LibraryLayout.list, Icons.view_list_outlined),
-                    ])
-                      ButtonSegment(
-                        value: l,
-                        icon: Icon(icon, size: 20),
-                        label: Text(tr(l.label), style: const TextStyle(fontSize: 12)),
-                      ),
+                    for (final c in LayoutControl.values)
+                      ButtonSegment(value: c, label: Text(tr(c.label), style: const TextStyle(fontSize: 13))),
                   ],
-                  selected: {s.libraryLayout},
-                  onSelectionChanged: (v) => model.updateSettings((x) => x.libraryLayout = v.first),
+                  selected: {s.layoutControl},
+                  onSelectionChanged: (v) => model.updateSettings((x) => x.layoutControl = v.first),
                 ),
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Text(
+                s.layoutControl == LayoutControl.myPage ? tr('여기서 홈 화면 보기 방식을 골라요') : tr('홈 화면 "노래 추가" 왼쪽 버튼을 눌러 골라요'),
+                style: TextStyle(fontSize: 12, color: t.textTertiary),
+              ),
+            ),
+            if (s.layoutControl == LayoutControl.myPage)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: SegmentedButton<LibraryLayout>(
+                    showSelectedIcon: false,
+                    style: SegmentedButton.styleFrom(
+                      selectedBackgroundColor: t.accent,
+                      selectedForegroundColor: t.onAccent,
+                      foregroundColor: t.textSecondary,
+                      side: BorderSide(color: t.stroke),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                    segments: [
+                      for (final (l, icon) in [
+                        (LibraryLayout.carousel, Icons.view_carousel_outlined),
+                        (LibraryLayout.stack, Icons.layers_outlined),
+                        (LibraryLayout.grid, Icons.grid_view_outlined),
+                        (LibraryLayout.list, Icons.view_list_outlined),
+                      ])
+                        // Icon above the name, so "슬라이드" fits on one line in a quarter of the row.
+                        ButtonSegment(
+                          value: l,
+                          label: Column(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(icon, size: 20),
+                            const SizedBox(height: 2),
+                            Text(tr(l.label), maxLines: 1, softWrap: false, overflow: TextOverflow.fade, style: const TextStyle(fontSize: 12)),
+                          ]),
+                        ),
+                    ],
+                    selected: {s.libraryLayout},
+                    onSelectionChanged: (v) => model.updateSettings((x) => x.libraryLayout = v.first),
+                  ),
+                ),
+              )
+            else
+              const SizedBox(height: 16),
           ]),
           _section(tr('테마'), [
             ListTile(

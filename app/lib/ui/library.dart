@@ -78,6 +78,12 @@ class _LibraryViewState extends State<LibraryView> {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
               child: Row(children: [
+                // C방식 of the layout survey: the layout is picked here instead of in My page.
+                if (model.settings.layoutControl == LayoutControl.home)
+                  _LayoutPicker(
+                    value: model.settings.libraryLayout,
+                    onChanged: (v) => model.updateSettings((x) => x.libraryLayout = v),
+                  ),
                 const Spacer(),
                 _AddPill(onTap: () => model.openAdd()),
               ]),
@@ -96,6 +102,79 @@ class _LibraryViewState extends State<LibraryView> {
                   ),
           ),
         ]),
+      ),
+    );
+  }
+}
+
+/// One round button showing the current layout; tapping it unfolds the four layouts, and picking
+/// one folds it again (C방식: saves room next to "노래 추가" compared with four buttons in a row).
+class _LayoutPicker extends StatefulWidget {
+  final LibraryLayout value;
+  final ValueChanged<LibraryLayout> onChanged;
+  const _LayoutPicker({required this.value, required this.onChanged});
+
+  @override
+  State<_LayoutPicker> createState() => _LayoutPickerState();
+}
+
+class _LayoutPickerState extends State<_LayoutPicker> {
+  bool open = false;
+
+  static const _items = [
+    (LibraryLayout.carousel, Icons.view_carousel_outlined, '앨범 슬라이드로 보기'),
+    (LibraryLayout.grid, Icons.grid_view_outlined, '격자로 보기'),
+    (LibraryLayout.list, Icons.view_list_outlined, '리스트로 보기'),
+    (LibraryLayout.stack, Icons.layers_outlined, '겹쳐서 보기'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    final reduce = MediaQuery.of(context).disableAnimations;
+    Widget btn(LibraryLayout v, IconData icon, String label, {required bool on, required VoidCallback onTap, String? hint}) => Semantics(
+          label: tr(label),
+          hint: hint,
+          selected: on,
+          button: true,
+          excludeSemantics: true,
+          child: GestureDetector(
+            onTap: onTap,
+            child: AnimatedContainer(
+              duration: reduce ? Duration.zero : const Duration(milliseconds: 220),
+              curve: const Cubic(.3, .8, .3, 1),
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(color: on ? t.surfaceRaised : Colors.transparent, shape: BoxShape.circle),
+              child: Icon(icon, size: 20, color: on ? t.textPrimary : t.textTertiary),
+            ),
+          ),
+        );
+    final current = _items.firstWhere((e) => e.$1 == widget.value);
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(color: t.surface, borderRadius: BorderRadius.circular(999), border: Border.all(color: t.stroke.withValues(alpha: 0.5))),
+      child: AnimatedSize(
+        duration: reduce ? Duration.zero : const Duration(milliseconds: 240),
+        curve: const Cubic(.3, .8, .3, 1),
+        alignment: Alignment.centerLeft,
+        child: open
+            ? Row(mainAxisSize: MainAxisSize.min, children: [
+                for (final (v, icon, label) in _items) ...[
+                  if (v != _items.first.$1) const SizedBox(width: 2),
+                  btn(v, icon, label, on: v == widget.value, onTap: () {
+                    setState(() => open = false);
+                    if (v != widget.value) widget.onChanged(v);
+                  }),
+                ],
+              ])
+            : Row(mainAxisSize: MainAxisSize.min, children: [
+                btn(current.$1, current.$2, current.$3, on: true, hint: tr('눌러서 보기 방식 바꾸기'), onTap: () => setState(() => open = true)),
+                Padding(
+                  padding: const EdgeInsets.only(left: 2, right: 4),
+                  child: Icon(Icons.chevron_right_rounded, size: 18, color: t.textTertiary),
+                ),
+              ]),
       ),
     );
   }

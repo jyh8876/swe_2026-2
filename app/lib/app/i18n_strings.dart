@@ -4,6 +4,11 @@
 const Map<String, Map<String, String>> uiStrings = {
   'en': {
     '보기 방식': 'Layout',
+    'B방식': 'Option B',
+    'C방식': 'Option C',
+    '여기서 홈 화면 보기 방식을 골라요': 'Choose the home layout here',
+    '홈 화면 "노래 추가" 왼쪽 버튼을 눌러 골라요': 'Choose it with the button left of "Add song" on the home',
+    '눌러서 보기 방식 바꾸기': 'Tap to change the layout',
     '슬라이드': 'Slide',
     '겹쳐서': 'Stack',
     '격자': 'Grid',
@@ -554,6 +559,11 @@ const Map<String, Map<String, String>> uiStrings = {
   },
   'zh': {
     '보기 방식': '显示方式',
+    'B방식': 'B 方式',
+    'C방식': 'C 方式',
+    '여기서 홈 화면 보기 방식을 골라요': '在这里选择首页的显示方式',
+    '홈 화면 "노래 추가" 왼쪽 버튼을 눌러 골라요': '点首页“添加歌曲”左边的按钮来选择',
+    '눌러서 보기 방식 바꾸기': '点按更改显示方式',
     '슬라이드': '滑动',
     '겹쳐서': '堆叠',
     '격자': '网格',
@@ -1104,6 +1114,11 @@ const Map<String, Map<String, String>> uiStrings = {
   },
   'ja': {
     '보기 방식': '表示方法',
+    'B방식': 'B方式',
+    'C방식': 'C方式',
+    '여기서 홈 화면 보기 방식을 골라요': 'ここでホームの表示方法を選びます',
+    '홈 화면 "노래 추가" 왼쪽 버튼을 눌러 골라요': 'ホームの「曲を追加」の左のボタンで選びます',
+    '눌러서 보기 방식 바꾸기': 'タップして表示方法を変更',
     '슬라이드': 'スライド',
     '겹쳐서': '重ねる',
     '격자': 'グリッド',
