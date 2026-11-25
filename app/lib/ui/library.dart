@@ -627,7 +627,7 @@ class _StackViewState extends State<_StackView> with SingleTickerProviderStateMi
       ..rotateY(_yaw)
       ..translateByDouble(0.0, 0.0, d * card * _gap, 1.0);
     // Glass, but mostly solid like the reference: the plates behind only let a little through.
-    final opacity = d < 0 ? (1 + d / 1.3).clamp(0.0, 1.0) : (0.98 - min(d, 1.0) * 0.06 - max(0.0, d - 1) * 0.03).clamp(0.78, 0.98);
+    final opacity = d < 0 ? (1 + d / 1.3).clamp(0.0, 1.0) : (0.96 - min(d, 1.0) * 0.12 - max(0.0, d - 1) * 0.08).clamp(0.60, 0.96);
     return Positioned(
       left: w * 0.30 - card / 2,
       top: h * 0.66 - card / 2,
@@ -685,14 +685,15 @@ class _GlassPlate extends StatelessWidget {
                 begin: begin,
                 end: end,
                 colors: [tint.withValues(alpha: 0.38), tint.withValues(alpha: 0), tint.withValues(alpha: 0), tint.withValues(alpha: 0.38)],
-                stops: const [0, 0.06, 0.94, 1],
+                stops: const [0, 0.10, 0.90, 1],
               ),
             ),
           ),
         );
     final showBadge = translating || song.status == SongStatus.failed || song.isConquered;
-    final rim = song.isConquered ? null : light.withValues(alpha: 0.85);
-    final shade = song.isConquered ? null : dark.withValues(alpha: 0.9);
+    // Clear glass rims: the light and shade only tint them faintly.
+    final rim = song.isConquered ? null : light.withValues(alpha: 0.35);
+    final shade = song.isConquered ? null : dark.withValues(alpha: 0.35);
     return Container(
       width: size,
       height: size,
@@ -788,9 +789,10 @@ List<Widget> _slab(double card, Color tint) {
   // Edges in the album's colour with light and shade: the top and left catch the light, the right
   // and bottom fall in shade, so a pale cover gets a pale rim and a dark one a dark rim.
   final (light, dark) = plateShades(tint);
-  LinearGradient band(Color c) => LinearGradient(colors: [c.withValues(alpha: 0.95), c.withValues(alpha: 0.80), c.withValues(alpha: 0.95)]);
+  // See-through glass edges: a little brighter where the faces meet, clear in the middle.
+  LinearGradient band(Color c) => LinearGradient(colors: [c.withValues(alpha: 0.45), c.withValues(alpha: 0.18), c.withValues(alpha: 0.45)]);
   return [
-    face(card, card, Matrix4.identity()..translateByDouble(0.0, 0.0, th, 1.0), g: LinearGradient(colors: [tint.withValues(alpha: 0.55), dark.withValues(alpha: 0.55)])),
+    face(card, card, Matrix4.identity()..translateByDouble(0.0, 0.0, th, 1.0), g: LinearGradient(colors: [tint.withValues(alpha: 0.25), dark.withValues(alpha: 0.25)])),
     face(th, card, Matrix4.identity()..translateByDouble(card / 2, 0.0, th / 2, 1.0)..rotateY(pi / 2), g: band(dark)),
     face(th, card, Matrix4.identity()..translateByDouble(-card / 2, 0.0, th / 2, 1.0)..rotateY(pi / 2), g: band(light)),
     face(card, th, Matrix4.identity()..translateByDouble(0.0, -card / 2, th / 2, 1.0)..rotateX(pi / 2), g: band(light).withRotation()),
