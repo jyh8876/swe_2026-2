@@ -788,6 +788,10 @@ class AppModel extends ChangeNotifier {
   /// The account server; null keeps the account on this device only.
   AccountApi accountApi = AccountApi();
 
+  /// Revokes the Google grant on account deletion; tests replace it.
+  @visibleForTesting
+  Future<void> Function() googleDisconnect = GoogleAuth.disconnect;
+
   /// Throws [GoogleSignInException] on failure; a cancelled sign-in changes nothing.
   Future<void> signInGoogle() => _signIn(GoogleAuth.signIn);
 
@@ -904,8 +908,8 @@ class AppModel extends ChangeNotifier {
   bool wasReported(String songID, [int? lineIndex]) => _reported.contains('$songID#${lineIndex ?? '*'}');
 
   /// Deletes the account: the user signs in once more so the server can check who is asking
-  /// (and, for Apple, revoke the Apple tokens), then everything on the server is deleted and the
-  /// app signs out.
+  /// (and, for Apple, revoke the Apple tokens), then everything on the server is deleted, a Google
+  /// account's grant to Vinylo is revoked, and the app signs out.
   /// Returns false when the user cancels. Songs and lyrics on the device are not touched.
   Future<bool> deleteAccount() async {
     final current = settings.account;
@@ -917,6 +921,7 @@ class AppModel extends ChangeNotifier {
       if (token == null) throw const AccountApiException('no ID token');
       await accountApi.delete(token, authorizationCode: r.authorizationCode);
     }
+    if (!current.isApple) await googleDisconnect();
     await signOut();
     return true;
   }

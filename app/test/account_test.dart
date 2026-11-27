@@ -52,8 +52,9 @@ void main() {
       expect(AppleAuth.isSupported, isTrue);
     });
 
-    test('without build-time settings nothing is configured in tests', () {
-      expect(GoogleAuth.serverClientId, isEmpty);
+    test('the Google web client is built in; the server stays off in tests', () {
+      expect(GoogleAuth.serverClientId, GoogleAuth.webClientId);
+      expect(GoogleAuth.serverClientId, endsWith('.apps.googleusercontent.com'));
       expect(AccountApi.baseUrl, isEmpty);
       expect(AccountApi().isConfigured, isFalse);
     });
@@ -167,6 +168,18 @@ void main() {
       await model.completeSignIn(const SignInResult(AccountInfo(provider: 'apple', id: '1')));
       expect(model.account?.id, '1');
       expect(await model.deleteAccount(), isTrue);
+      expect(model.account, isNull);
+    });
+
+    test('deleting a Google account revokes its grant to Vinylo; an Apple one does not touch Google', () async {
+      var revoked = 0;
+      model.googleDisconnect = () async => revoked++;
+      await model.completeSignIn(const SignInResult(AccountInfo(provider: 'apple', id: '1')));
+      expect(await model.deleteAccount(), isTrue);
+      expect(revoked, 0);
+      await model.completeSignIn(const SignInResult(AccountInfo(provider: 'google', id: '2', email: 'a@b.c')));
+      expect(await model.deleteAccount(), isTrue);
+      expect(revoked, 1);
       expect(model.account, isNull);
     });
   });
